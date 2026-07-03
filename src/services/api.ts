@@ -23,10 +23,11 @@ export const fetchAdData = async (platform: Platform): Promise<PlatformData> => 
         console.log('[Shopee] Real data received:', data);
 
         if (data && data.summary) {
+          // 如果真实数据拉取成功但某些字段为空（如产品列表），用 Mock 补充显示
           return {
             ...data,
-            daily: shopeeMockData.daily, 
-            products: shopeeMockData.products,
+            daily: data.daily?.length > 0 ? data.daily : shopeeMockData.daily, 
+            products: data.products?.length > 0 ? data.products : shopeeMockData.products,
           };
         }
       } catch (err: any) {
