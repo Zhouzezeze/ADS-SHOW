@@ -1,105 +1,100 @@
-import type { DailyData, PlatformData, ProductData } from '../types';
+import type { PlatformData, DailyData, ProductData, ProductStatus, AdMetrics } from '../types';
 
-const generateDailyData = (days: number, baseSpend: number): DailyData[] => {
-  return Array.from({ length: days }).map((_, i) => {
-    const date = new Date();
-    date.setDate(date.getDate() - (days - 1 - i));
-    const spend = baseSpend * (0.8 + Math.random() * 0.4);
-    const sales = spend * (3 + Math.random() * 4);
-    const clicks = Math.floor(spend / (0.5 + Math.random()));
-    const impressions = clicks * (20 + Math.random() * 30);
-    const orders = Math.floor(sales / (15 + Math.random() * 10));
+const generateMetrics = (baseSpend: number, baseRoas: number): AdMetrics => {
+  const spend = baseSpend + (Math.random() - 0.5) * baseSpend * 0.2;
+  const roas = baseRoas + (Math.random() - 0.5) * 2;
+  const sales = spend * roas;
+  const clicks = Math.floor(spend / (0.1 + Math.random() * 0.2));
+  const impressions = clicks * (10 + Math.floor(Math.random() * 50));
+  const ctr = (clicks / impressions) * 100;
+  const orders = Math.floor(sales / (20 + Math.random() * 30));
+  const cvr = (orders / clicks) * 100;
+  const cpc = spend / clicks;
+  const acos = (spend / sales) * 100;
 
-    return {
-      date: date.toISOString().split('T')[0],
-      spend: parseFloat(spend.toFixed(2)),
-      sales: parseFloat(sales.toFixed(2)),
-      impressions,
-      clicks,
-      ctr: parseFloat(((clicks / impressions) * 100).toFixed(2)),
-      orders,
-      acos: parseFloat(((spend / sales) * 100).toFixed(2)),
-      roas: parseFloat((sales / spend).toFixed(2)),
-      cvr: parseFloat(((orders / clicks) * 100).toFixed(2)),
-    };
-  });
+  return {
+    impressions,
+    clicks,
+    ctr,
+    spend,
+    orders,
+    sales,
+    acos,
+    roas,
+    cvr,
+    cpc,
+  };
 };
 
-const productNames = ['Talhe...', 'Jk-7', 'A170-D', 'Ralo...', 'Moldu...', 'Ga...', 'Kit 4 ou 8 G...'];
-const statuses: ProductData['status'][] = ['正常', '无转化', '转化率偏低', 'ROAS偏低', '点击率偏低', '成本异常'];
+const statuses: ProductStatus[] = ['正常', '无转化', '转化率偏低', 'ROAS偏低', '点击率偏低', '成本异常'];
 
-const generateProducts = (count: number): ProductData[] => {
-  return Array.from({ length: count }).map((_, i) => {
-    const spend = 50 + Math.random() * 500;
-    const sales = Math.random() > 0.2 ? spend * (2 + Math.random() * 8) : 0;
-    const clicks = Math.floor(spend / (0.3 + Math.random()));
-    const impressions = clicks * (10 + Math.random() * 50);
-    const orders = sales > 0 ? Math.floor(sales / 20) : 0;
-
-    return {
-      id: `P-${1000 + i}`,
-      sku: `SKU-${1000 + i}`,
-      name: productNames[i % productNames.length],
-      image: `https://picsum.photos/seed/${i}/40/40`,
-      status: statuses[Math.floor(Math.random() * statuses.length)],
-      date: '05-16',
-      spend: parseFloat(spend.toFixed(2)),
-      sales: parseFloat(sales.toFixed(2)),
-      impressions,
-      clicks,
-      ctr: parseFloat(((clicks / impressions) * 100).toFixed(2)),
-      orders,
-      acos: sales > 0 ? parseFloat(((spend / sales) * 100).toFixed(2)) : 0,
-      roas: sales > 0 ? parseFloat((sales / spend).toFixed(2)) : 0,
-      cvr: clicks > 0 ? parseFloat(((orders / clicks) * 100).toFixed(2)) : 0,
-    };
-  });
-};
-
-export const shopeeMockData: PlatformData = {
-  summary: {
-    impressions: 1250000,
-    clicks: 45000,
-    ctr: 3.6,
-    spend: 15000.5,
-    orders: 1200,
-    sales: 85000.2,
-    acos: 17.65,
-    roas: 5.67,
-    cvr: 2.67,
-    issueLinks: 4159,
-  },
-  daily: generateDailyData(30, 500),
-  products: generateProducts(15),
-  diagnosis: {
-    totalSkus: 50,
-    burningSkus: 0,
-    canAddBudget: 2,
-    highImpNoConv: 0,
-    overallRoas: 9.67,
+export const generateMockData = (platform: 'shopee' | 'amazon'): PlatformData => {
+  const daily: DailyData[] = [];
+  const now = new Date();
+  
+  for (let i = 29; i >= 0; i--) {
+    const date = new Date(now);
+    date.setDate(date.getDate() - i);
+    const dateStr = date.toISOString().split('T')[0];
+    const metrics = generateMetrics(platform === 'shopee' ? 500 : 800, platform === 'shopee' ? 4 : 5);
+    daily.push({ ...metrics, date: dateStr });
   }
-};
 
-export const amazonMockData: PlatformData = {
-  summary: {
-    impressions: 2100000,
-    clicks: 68000,
-    ctr: 3.24,
-    spend: 32000.8,
-    orders: 2800,
-    sales: 195000.5,
-    acos: 16.41,
-    roas: 6.09,
-    cvr: 4.12,
-    issueLinks: 1250,
-  },
-  daily: generateDailyData(30, 1000),
-  products: generateProducts(20),
-  diagnosis: {
-    totalSkus: 85,
-    burningSkus: 2,
-    canAddBudget: 5,
-    highImpNoConv: 1,
-    overallRoas: 6.09,
+  const products: ProductData[] = [];
+  const names = [
+    'Wireless Earbuds Pro', 'Smart Watch Series 7', 'Mechanical Keyboard RGB', 'USB-C Hub 7-in-1',
+    'Gaming Mouse Wireless', 'Portable SSD 1TB', 'Bluetooth Speaker Mini', 'HD Webcam 1080p',
+    'Laptop Stand Aluminum', 'Ergonomic Office Chair', 'Noise Cancelling Headphones', '4K Monitor 27 inch',
+    'External Battery Pack', 'Wireless Charger Pad', 'Desk Mat Large', 'Monitor Arm Single',
+    'Phone Tripod Stand', 'Webcam Light Ring', 'Cable Management Box', 'Vertical Mouse'
+  ];
+
+  for (let i = 0; i < 20; i++) {
+    const metrics = generateMetrics(platform === 'shopee' ? 50 : 80, platform === 'shopee' ? 3 : 4);
+    const status = i === 0 ? '正常' : i % 5 === 0 ? statuses[Math.floor(Math.random() * statuses.length)] : '正常';
+    
+    products.push({
+      ...metrics,
+      id: `${platform}-${i}`,
+      sku: `${platform.toUpperCase()}-${1000 + i}`,
+      name: `${platform === 'shopee' ? '[Shopee] ' : '[Amazon] '}${names[i]}`,
+      image: `https://picsum.photos/seed/${platform}-${i}/40/40`,
+      status: status as ProductStatus,
+      date: daily[daily.length - 1].date,
+      campaign_name: `${platform.toUpperCase()}_Campaign_${Math.floor(i / 5)}`,
+      ad_group: `Group_${i % 5}`
+    });
   }
+
+  const summary = daily.reduce((acc, curr) => ({
+    impressions: acc.impressions + curr.impressions,
+    clicks: acc.clicks + curr.clicks,
+    spend: acc.spend + curr.spend,
+    orders: acc.orders + curr.orders,
+    sales: acc.sales + curr.sales,
+    ctr: 0,
+    acos: 0,
+    roas: 0,
+    cvr: 0,
+    cpc: 0,
+  }), { impressions: 0, clicks: 0, spend: 0, orders: 0, sales: 0, ctr: 0, acos: 0, roas: 0, cvr: 0, cpc: 0 });
+
+  summary.ctr = (summary.clicks / summary.impressions) * 100;
+  summary.roas = summary.sales / summary.spend;
+  summary.acos = (summary.spend / summary.sales) * 100;
+  summary.cvr = (summary.orders / summary.clicks) * 100;
+  summary.cpc = summary.spend / summary.clicks;
+
+  const diagnosis = {
+    totalSkus: products.length,
+    burningSkus: products.filter(p => p.status === '成本异常' || p.status === '无转化').length,
+    canAddBudget: products.filter(p => p.roas > 5).length,
+    highImpNoConv: products.filter(p => p.status === '无转化').length,
+    overallRoas: summary.roas,
+    totalSpend: summary.spend,
+    totalSales: summary.sales,
+    suggestion: summary.roas < 4 ? '建议优化关键词和转化率' : '表现良好，可适当增加预算'
+  };
+
+  return { summary, daily, products, diagnosis };
 };

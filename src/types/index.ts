@@ -1,4 +1,4 @@
-export interface AdMetrics {
+export type AdMetrics = {
   impressions: number;
   clicks: number;
   ctr: number;
@@ -8,32 +8,42 @@ export interface AdMetrics {
   acos: number;
   roas: number;
   cvr: number;
-}
+  cpc: number;
+};
 
-export interface DailyData extends AdMetrics {
+export type DailyData = AdMetrics & {
   date: string;
-}
+};
 
-export interface ProductData extends AdMetrics {
+export type ProductStatus = '正常' | '无转化' | '转化率偏低' | 'ROAS偏低' | '点击率偏低' | '成本异常';
+
+export type ProductData = AdMetrics & {
   id: string;
   sku: string;
   name: string;
   image: string;
-  status: '正常' | '无转化' | '转化率偏低' | 'ROAS偏低' | '点击率偏低' | '成本异常';
+  status: ProductStatus;
   date: string;
-}
+  campaign_name: string;
+  ad_group: string;
+};
 
-export interface PlatformData {
-  summary: AdMetrics & { issueLinks: number };
+export type DiagnosisInfo = {
+  totalSkus: number;
+  burningSkus: number;
+  canAddBudget: number;
+  highImpNoConv: number;
+  overallRoas: number;
+  suggestion: string;
+  totalSpend: number;
+  totalSales: number;
+};
+
+export type PlatformData = {
+  summary: AdMetrics;
   daily: DailyData[];
   products: ProductData[];
-  diagnosis: {
-    totalSkus: number;
-    burningSkus: number;
-    canAddBudget: number;
-    highImpNoConv: number;
-    overallRoas: number;
-  };
-}
+  diagnosis: DiagnosisInfo;
+};
 
-export type Platform = 'shopee' | 'amazon' | 'total' | 'settings';
+export type Platform = 'shopee' | 'amazon' | 'total';

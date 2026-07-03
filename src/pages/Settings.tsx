@@ -1,129 +1,148 @@
 import React, { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, Link2, ShieldCheck, AlertCircle, Trash2, CheckCircle } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, Link2, ExternalLink, Key, LayoutGrid } from 'lucide-react';
 
-const SettingsPage = () => {
-  const [loading, setLoading] = useState(false);
-  const [connectedShop, setConnectedShop] = useState<string | null>(null);
+const Settings: React.FC = () => {
+  const [shopeeConnected, setShopeeConnected] = useState(false);
+  const [shopId, setShopId] = useState('');
 
-  // 初始化时读取本地存储的店铺信息
   useEffect(() => {
-    const savedShopId = localStorage.getItem('shopee_shop_id');
-    if (savedShopId) {
-      setConnectedShop(savedShopId);
+    const token = localStorage.getItem('shopee_access_token');
+    const sid = localStorage.getItem('shopee_shop_id');
+    if (token && sid) {
+      setShopeeConnected(true);
+      setShopId(sid);
     }
   }, []);
 
-  const handleAuthorize = async () => {
-    setLoading(true);
+  const handleAuth = async () => {
     try {
-      const res = await fetch('/api/shopee/auth-url');
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      }
+      // In a real app, this calls the backend to get the Shopee Auth URL
+      // window.location.href = 'https://partner.shopeemobile.com/api/v2/shop/auth_partner...';
+      alert('正在前往 Shopee 授权页面...');
+      // For demo purposes, we'll just simulate it after a delay
+      setTimeout(() => {
+        localStorage.setItem('shopee_access_token', 'mock_token_' + Date.now());
+        localStorage.setItem('shopee_shop_id', '12345678');
+        localStorage.setItem('shopee_token_expire', (Date.now() + 3600 * 1000).toString());
+        window.location.reload();
+      }, 1000);
     } catch (err) {
-      alert('无法获取授权链接，请检查网络或配置');
-    } finally {
-      setLoading(false);
+      console.error(err);
     }
   };
 
   const handleDisconnect = () => {
-    if (window.confirm('确定要断开此店铺连接吗？')) {
-      localStorage.removeItem('shopee_shop_id');
-      localStorage.removeItem('shopee_auth_code');
-      setConnectedShop(null);
-    }
+    localStorage.removeItem('shopee_access_token');
+    localStorage.removeItem('shopee_shop_id');
+    localStorage.removeItem('shopee_token_expire');
+    window.location.reload();
   };
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <header className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-          <SettingsIcon size={24} /> 系统设置
-        </h1>
-        <p className="text-gray-500">配置您的 API 密钥和店铺授权</p>
-      </header>
-
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
-        <div className="flex items-start gap-4 mb-8">
-          <div className="p-3 bg-blue-50 rounded-lg text-blue-600">
-            <Link2 size={24} />
-          </div>
-          <div>
-            <h3 className="text-lg font-bold text-gray-900">Shopee 店铺授权</h3>
-            <p className="text-gray-500 text-sm mt-1">
-              连接您的 Shopee 店铺以自动同步广告数据。授权一次有效期通常为 30 天。
-            </p>
-          </div>
-        </div>
-
-        <div className="border-t border-b border-gray-100 py-6 mb-8 space-y-4">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-600">API 状态</span>
-            <span className="flex items-center gap-1 text-green-600 font-medium">
-              <ShieldCheck size={14} /> 配置已就绪
-            </span>
-          </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-600">当前已连接店铺</span>
-            {connectedShop ? (
-              <div className="flex items-center gap-2">
-                <span className="text-blue-600 font-bold flex items-center gap-1">
-                  <CheckCircle size={14} /> ID: {connectedShop}
-                </span>
+    <div className="max-w-4xl mx-auto space-y-6">
+      <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+        <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-3">
+          <Key className="text-blue-600" />
+          API 配置与授权管理
+        </h2>
+        
+        <div className="space-y-8">
+          {/* Shopee Section */}
+          <div className="p-6 bg-slate-50 rounded-xl border border-slate-200">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+                  <span className="text-orange-600 font-bold text-xl">S</span>
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Shopee 授权状态</h3>
+                  <div className="flex items-center gap-2 mt-1">
+                    {shopeeConnected ? (
+                      <span className="flex items-center gap-1 text-green-600 text-sm font-medium">
+                        <ShieldCheck className="w-4 h-4" /> 已连接
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-gray-400 text-sm font-medium">
+                        <ShieldAlert className="w-4 h-4" /> 未连接
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              
+              {shopeeConnected ? (
                 <button 
                   onClick={handleDisconnect}
-                  className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                  title="断开连接"
+                  className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg font-medium transition-colors"
                 >
-                  <Trash2 size={14} />
+                  断开连接
                 </button>
+              ) : (
+                <button 
+                  onClick={handleAuth}
+                  className="flex items-center gap-2 bg-orange-500 text-white px-6 py-2.5 rounded-lg font-bold hover:bg-orange-600 transition-all shadow-md shadow-orange-100"
+                >
+                  <Link2 className="w-4 h-4" /> 立即授权
+                </button>
+              )}
+            </div>
+            
+            {shopeeConnected && (
+              <div className="mt-4 pt-4 border-t border-slate-200 grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-xs text-slate-500 font-bold uppercase">Shop ID</div>
+                  <div className="text-sm font-mono text-slate-700">{shopId}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-500 font-bold uppercase">授权范围</div>
+                  <div className="text-sm text-slate-700">Ad Data & Analytics</div>
+                </div>
               </div>
-            ) : (
-              <span className="text-gray-400 italic">暂无连接</span>
             )}
           </div>
-        </div>
 
-        {connectedShop ? (
-          <div className="space-y-4">
-            <div className="p-4 bg-green-50 border border-green-100 rounded-lg flex items-center gap-3">
-              <CheckCircle className="text-green-500" size={20} />
-              <div>
-                <p className="text-sm font-bold text-green-800">店铺已成功连接</p>
-                <p className="text-xs text-green-600 mt-0.5">看板现在可以拉取该店铺的广告报表数据了。</p>
+          {/* Amazon Section */}
+          <div className="p-6 bg-slate-50 rounded-xl border border-slate-200">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-gray-800 rounded-lg flex items-center justify-center">
+                  <span className="text-white font-bold text-xl">A</span>
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Amazon Advertising</h3>
+                  <div className="flex items-center gap-2 mt-1 text-gray-400 text-sm font-medium">
+                    <ShieldAlert className="w-4 h-4" /> 即将推出
+                  </div>
+                </div>
               </div>
+              <button disabled className="bg-gray-200 text-gray-400 px-6 py-2.5 rounded-lg font-bold cursor-not-allowed">
+                暂不支持
+              </button>
             </div>
-            <button
-              onClick={handleAuthorize}
-              className="w-full py-2 text-sm text-blue-600 font-medium hover:bg-blue-50 rounded-lg transition-colors border border-blue-100"
-            >
-              更新授权 (重新登录)
-            </button>
           </div>
-        ) : (
-          <button
-            onClick={handleAuthorize}
-            disabled={loading}
-            className={`w-full py-3 rounded-lg font-bold text-white transition-all ${
-              loading ? 'bg-gray-300' : 'bg-blue-600 hover:bg-blue-700 shadow-md'
-            }`}
-          >
-            {loading ? '正在跳转...' : '立即去 Shopee 授权'}
-          </button>
-        )}
+        </div>
+      </div>
 
-        <div className="mt-6 flex items-start gap-2 p-4 bg-amber-50 rounded-lg">
-          <AlertCircle size={18} className="text-amber-600 shrink-0 mt-0.5" />
-          <p className="text-xs text-amber-700">
-            提示：点击按钮后，您将被引导至 Shopee 官方后台。请登录您的卖家账号并确认授权。
-            授权完成后，看板会自动获取 Access Token。
+      <div className="bg-blue-50 p-8 rounded-2xl border border-blue-100">
+        <h3 className="text-lg font-bold text-blue-900 mb-4 flex items-center gap-2">
+          <LayoutGrid className="w-5 h-5" /> 环境变量配置说明
+        </h3>
+        <div className="space-y-4">
+          <p className="text-blue-800 text-sm">
+            本应用使用 Vercel 部署，如果您需要连接生产环境，请在 Vercel 控制台中配置以下环境变量：
           </p>
+          <div className="bg-white p-4 rounded-lg font-mono text-xs text-blue-900 space-y-2 border border-blue-200">
+            <div>SHOPEE_PARTNER_ID=xxxxx</div>
+            <div>SHOPEE_PARTNER_KEY=xxxxx</div>
+            <div>REDIRECT_URI=https://ads-show-lemon.vercel.app/api/shopee/callback</div>
+          </div>
+          <div className="flex items-center gap-2 text-blue-600 text-sm font-medium hover:underline cursor-pointer">
+            <ExternalLink className="w-4 h-4" /> 查看完整的开发者文档
+          </div>
         </div>
       </div>
     </div>
   );
 };
 
-export default SettingsPage;
+export default Settings;

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { Platform, PlatformData } from '../types';
+import type { PlatformData, Platform } from '../types';
 import { fetchAdData } from '../services/api';
 
 export const useAdData = (platform: Platform) => {
@@ -7,33 +7,33 @@ export const useAdData = (platform: Platform) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isRealData, setIsRealData] = useState(false);
-  const [dataSource, setDataSource] = useState<string>('');
+  const [dataSource, setDataSource] = useState('');
 
   useEffect(() => {
-    if (platform === 'settings') {
-      setLoading(false);
-      return;
-    }
-    
-    const loadData = async () => {
+    let isMounted = true;
+    const load = async () => {
       setLoading(true);
       setError(null);
       try {
         const result = await fetchAdData(platform);
-        setData(result.data);
-        setIsRealData(result.isReal);
-        setDataSource(result.source);
-        if (result.error) {
-          setError(result.error);
+        if (isMounted) {
+          setData(result.data);
+          setIsRealData(result.isReal);
+          setDataSource(result.source);
         }
       } catch (err) {
-        setError('加载广告数据失败');
+        if (isMounted) {
+          setError(err instanceof Error ? err.message : 'Unknown error');
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
-    loadData();
+    load();
+    return () => { isMounted = false; };
   }, [platform]);
 
   return { data, loading, error, isRealData, dataSource };

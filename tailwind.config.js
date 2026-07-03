@@ -5,7 +5,12 @@ export default {
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
-    extend: {},
+    extend: {
+      colors: {
+        shopee: '#ee4d2d',
+        amazon: '#ff9900',
+      }
+    },
   },
   plugins: [],
 }

@@ -1,39 +1,39 @@
 import React from 'react';
+import type { ProductStatus } from '../types';
 
 interface StatusFilterProps {
-  activeStatus: string;
-  setActiveStatus: (status: string) => void;
+  selectedStatus: string;
+  onStatusChange: (status: string) => void;
   counts: Record<string, number>;
 }
 
-const StatusFilter: React.FC<StatusFilterProps> = ({ activeStatus, setActiveStatus, counts }) => {
-  const statuses = [
-    { id: '全部', label: '正常' },
-    { id: '无转化', label: '无转化' },
-    { id: '转化率偏低', label: '转化率偏低' },
-    { id: 'ROAS偏低', label: 'ROAS偏低' },
-    { id: '点击率偏低', label: '点击率偏低' },
-    { id: '成本异常', label: '成本异常' },
+const StatusFilter: React.FC<StatusFilterProps> = ({ selectedStatus, onStatusChange, counts }) => {
+  const statuses: { label: string; value: string; color: string }[] = [
+    { label: '全部', value: 'all', color: 'bg-gray-100 text-gray-700' },
+    { label: '正常', value: '正常', color: 'bg-green-100 text-green-700' },
+    { label: '无转化', value: '无转化', color: 'bg-red-100 text-red-700' },
+    { label: '转化率偏低', value: '转化率偏低', color: 'bg-orange-100 text-orange-700' },
+    { label: 'ROAS偏低', value: 'ROAS偏低', color: 'bg-orange-100 text-orange-700' },
+    { label: '点击率偏低', value: '点击率偏低', color: 'bg-yellow-100 text-yellow-700' },
+    { label: '成本异常', value: '成本异常', color: 'bg-red-100 text-red-700' },
   ];
 
-  const getStatusColor = (id: string) => {
-    if (id === '全部') return 'text-green-600 bg-green-50 border-green-200';
-    return 'text-orange-600 bg-orange-50 border-orange-200';
-  };
-
   return (
-    <div className="flex flex-wrap gap-2 mb-4">
-      {statuses.map((status) => (
+    <div className="flex flex-wrap gap-2 mb-6">
+      {statuses.map((s) => (
         <button
-          key={status.id}
-          onClick={() => setActiveStatus(status.id)}
-          className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${
-            activeStatus === status.id
-              ? `${getStatusColor(status.id)} ring-2 ring-offset-1 ring-blue-500`
-              : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-          }`}
+          key={s.value}
+          onClick={() => onStatusChange(s.value)}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 border-2 ${
+            selectedStatus === s.value 
+              ? 'border-blue-500 ring-2 ring-blue-100' 
+              : 'border-transparent hover:bg-white hover:shadow-sm'
+          } ${s.color}`}
         >
-          {status.label} <span className="ml-1 opacity-70">{counts[status.id] || 0}</span>
+          {s.label}
+          <span className="bg-white bg-opacity-50 px-1.5 rounded text-xs">
+            {s.value === 'all' ? Object.values(counts).reduce((a, b) => a + b, 0) : (counts[s.value] || 0)}
+          </span>
         </button>
       ))}
     </div>
