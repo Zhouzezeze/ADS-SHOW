@@ -53,7 +53,7 @@ const Settings: React.FC = () => {
       return;
     }
     try {
-      const res = await fetch(`/api/shopee/diagnose?shop_id=${sid}&access_token=${token}`);
+      const res = await fetch(`/api/shopee/check-permissions?shop_id=${sid}&access_token=${token}`);
       const data = await res.json();
       alert(JSON.stringify(data, null, 2));
     } catch (err: any) {
