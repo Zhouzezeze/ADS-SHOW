@@ -71,12 +71,16 @@ function DashboardContent() {
               <SettingsPage />
             ) : currentData ? (
               <>
-                <header className="mb-6">
-                  <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-                    广告健康看板
-                  </h1>
-                  <p className="text-gray-400 text-xs mt-1">数据来自 Shopee / Amazon API 自动同步 · 诊断基于链接分析缓存</p>
-                </header>
+            <header className="mb-6">
+              <div className="flex items-center justify-between">
+                <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                  广告健康看板
+                </h1>
+                <span className="px-2 py-1 bg-blue-100 text-blue-600 text-[10px] font-bold rounded">VER 1.2</span>
+              </div>
+              <p className="text-gray-400 text-xs mt-1">数据来自 Shopee / Amazon API 自动同步 · 诊断基于链接分析缓存</p>
+            </header>
+
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                   <StatCard title="总广告花费" value={currentData.summary.spend.toLocaleString()} prefix="R$ " />
