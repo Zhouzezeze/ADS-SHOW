@@ -15,7 +15,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const partnerKey = process.env.VITE_SHOPEE_PARTNER_KEY;
 
   if (!partnerId || !partnerKey) {
-    return res.status(500).json({ error: 'Server not configured' });
+    return res.status(500).json({ error: 'Server not configured: missing partner_id or partner_key' });
   }
 
   const host = "https://partner.shopeemobile.com";
@@ -25,42 +25,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const sign = crypto.createHmac('sha256', partnerKey).update(baseString).digest('hex');
   const url = `${host}${path}?partner_id=${partnerId}&timestamp=${timestamp}&sign=${sign}`;
 
-  // 根据是否是主账号，构造不同的请求体
   const requestBody: any = {
     code: code,
     partner_id: partnerId,
   };
 
   if (is_main_account === '1' || !shop_id) {
-    // 主账号授权，使用 main_account_id
     if (shop_id) {
       requestBody.main_account_id = parseInt(shop_id as string);
     }
-    console.log('[get-token] Using main_account_id mode:', shop_id);
+    console.log('[get-token] Main account mode, main_account_id:', shop_id);
   } else {
-    // 普通店铺授权，使用 shop_id
     requestBody.shop_id = parseInt(shop_id as string);
-    console.log('[get-token] Using shop_id mode:', shop_id);
+    console.log('[get-token] Shop mode, shop_id:', shop_id);
   }
 
   try {
     const response = await axios.post(url, requestBody);
-    console.log('[get-token] Shopee response:', JSON.stringify(response.data).substring(0, 500));
+    console.log('[get-token] Full Shopee response:', JSON.stringify(response.data));
 
     if (response.data.access_token) {
-      // 从返回中提取真实的 shop_id
-      const realShopId = response.data.shop_id;
-      const shopIdList = response.data.shop_id_list; // 主账号可能有多个店铺
-
-      res.status(200).json({
+      const responseData: any = {
         access_token: response.data.access_token,
         refresh_token: response.data.refresh_token || '',
         expire_in: response.data.expire_in || 14400,
-        shop_id: realShopId ? realShopId.toString() : (shop_id as string),
-        shop_id_list: shopIdList,
-        request_id: response.data.request_id,
-        raw_response: response.data
-      });
+      };
+
+      // 关键：提取真正的 shop_id
+      if (response.data.shop_id) {
+        // 普通店铺模式，直接有 shop_id
+        responseData.shop_id = response.data.shop_id.toString();
+      } else if (response.data.shop_id_list && response.data.shop_id_list.length > 0) {
+        // 主账号模式，返回的是 shop_id_list（可能有多个店铺）
+        responseData.shop_id = response.data.shop_id_list[0].toString();
+        responseData.shop_id_list = response.data.shop_id_list;
+        responseData.all_shops = response.data.shop_id_list;
+        console.log('[get-token] Found shop_id_list:', response.data.shop_id_list);
+        console.log('[get-token] Using first shop_id:', responseData.shop_id);
+      } else {
+        // 都没有，用传入的 ID 作为 fallback
+        responseData.shop_id = (shop_id as string);
+      }
+
+      res.status(200).json(responseData);
     } else {
       res.status(400).json({
         error: response.data.message || 'Failed to get token',
