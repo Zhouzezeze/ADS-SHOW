@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, ShieldAlert, Link2, ExternalLink, Key, Trash2, Loader2 } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, Link2, ExternalLink, Key, Trash2, Loader2, Activity } from 'lucide-react';
 
 const Settings: React.FC = () => {
   const [shopeeConnected, setShopeeConnected] = useState(false);
@@ -45,6 +45,22 @@ const Settings: React.FC = () => {
     }
   };
 
+  const handleDiagnose = async () => {
+    const token = localStorage.getItem('shopee_access_token');
+    const sid = localStorage.getItem('shopee_shop_id');
+    if (!token || !sid) {
+      alert('请先完成授权');
+      return;
+    }
+    try {
+      const res = await fetch(`/api/shopee/diagnose?shop_id=${sid}&access_token=${token}`);
+      const data = await res.json();
+      alert(JSON.stringify(data, null, 2));
+    } catch (err: any) {
+      alert('诊断失败: ' + err.message);
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
@@ -79,6 +95,12 @@ const Settings: React.FC = () => {
               
               {shopeeConnected ? (
                 <div className="flex items-center gap-3">
+                  <button 
+                    onClick={handleDiagnose}
+                    className="flex items-center gap-1 px-4 py-2 text-purple-600 hover:bg-purple-50 rounded-lg font-medium transition-colors border border-purple-100 text-sm"
+                  >
+                    <Activity className="w-3.5 h-3.5" /> 诊断
+                  </button>
                   <button 
                     onClick={handleAuth}
                     className="px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg font-medium transition-colors border border-blue-100 text-sm"

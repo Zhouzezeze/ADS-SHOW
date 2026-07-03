@@ -30,24 +30,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const sign = crypto.createHmac('sha256', partnerKey).update(baseString).digest('hex');
     const url = `${host}${path}?partner_id=${partnerId}&timestamp=${timestamp}&sign=${sign}`;
 
-    // 尝试两种模式：先用 main_account_id，如果失败再用 shop_id
+    // 尝试两种模式：先用 shop_id，如果失败再用 main_account_id
     const requests: any[] = [];
 
-    // 模式1: 主账号模式
-    if (is_main_account === '1' || !shop_id) {
-      requests.push({
-        code: code as string,
-        partner_id: partnerId,
-        main_account_id: parseInt(shop_id as string)
-      });
-    }
-
-    // 模式2: 普通店铺模式
+    // 模式1: 普通店铺模式 (优先尝试)
     if (shop_id) {
       requests.push({
         code: code as string,
         partner_id: partnerId,
         shop_id: parseInt(shop_id as string)
+      });
+    }
+
+    // 模式2: 主账号模式
+    if (is_main_account === '1' || !shop_id) {
+      requests.push({
+        code: code as string,
+        partner_id: partnerId,
+        main_account_id: parseInt(shop_id as string)
       });
     }
 
