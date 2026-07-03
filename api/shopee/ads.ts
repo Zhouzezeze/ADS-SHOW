@@ -11,11 +11,11 @@ async function shopeeApiCall(path: string, partnerId: number, partnerKey: string
   const host = "https://partner.shopeemobile.com";
   const timestamp = Math.floor(Date.now() / 1000);
   const sign = generateSign(partnerId, path, timestamp, accessToken, shopId, partnerKey);
-
   const url = `${host}${path}?partner_id=${partnerId}&timestamp=${timestamp}&sign=${sign}&access_token=${accessToken}&shop_id=${shopId}`;
 
   try {
     const response = await axios.get(url, { params });
+    console.log(`[Shopee API] ${path} response:`, JSON.stringify(response.data).substring(0, 500));
     return response.data;
   } catch (error: any) {
     console.error(`[Shopee API Error] ${path}:`, error.response?.data || error.message);
@@ -24,6 +24,7 @@ async function shopeeApiCall(path: string, partnerId: number, partnerKey: string
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
   const { shop_id, access_token } = req.query;
 
   if (!shop_id || !access_token) {
@@ -41,13 +42,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       { ad_type: 'all', offset: 0, limit: 100 }
     );
 
-    const campaignIds = (campaignRes.response?.campaign_id_list || []).join(',');
+    const campaignIdList = campaignRes.response?.campaign_id_list || [];
+    const campaignIds = campaignIdList.join(',');
     console.log('[Shopee] Campaign IDs:', campaignIds);
 
     if (!campaignIds) {
-      // 没有广告活动，返回空数据
       return res.status(200).json({
-        summary: { impressions: 0, clicks: 0, ctr: 0, spend: 0, orders: 0, sales: 0, acos: 0, roas: 0, cvr: 0, issueLinks: 0 },
+        summary: { impressions: 0, clicks: 0, ctr: 0, spend: 0, orders: 0, sales: 0, acos: 0, roas: 0, cvr: 0, cpc: 0, issueLinks: 0 },
         daily: [],
         products: [],
         diagnosis: { totalSkus: 0, burningSkus: 0, canAddBudget: 0, highImpNoConv: 0, overallRoas: 0 }
@@ -61,7 +62,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const dd = String(d.getDate()).padStart(2, '0');
       const mm = String(d.getMonth() + 1).padStart(2, '0');
       const yyyy = d.getFullYear();
-      return `${dd}-${mm}-${yyyy}`;
+      return `${dd}-${mm}-${yyyy}`; // Shopee 要求 DD-MM-YYYY 格式
     };
 
     const perfRes = await shopeeApiCall(
@@ -74,35 +75,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     );
 
-    const perfList = perfRes.response?.performance_list || [];
-    console.log('[Shopee] Performance records:', perfList.length);
+    // 根据官方文档，返回数据在 metrics_list 中
+    const perfList = perfRes.response?.metrics_list || perfRes.response?.performance_list || [];
+    console.log('[Shopee] Performance records count:', perfList.length);
+    if (perfList.length > 0) {
+      console.log('[Shopee] First record sample:', JSON.stringify(perfList[0]).substring(0, 500));
+    }
 
     // Step 3: 聚合数据
+    // 官方文档字段名：impression, clicks, expense, broad_gmv, broad_order, broad_roi, broad_cir
     let totalImpressions = 0, totalClicks = 0, totalSpend = 0, totalOrders = 0, totalSales = 0;
     const dailyMap: Record<string, any> = {};
 
     perfList.forEach((item: any) => {
-      const imp = item.impression || 0;
-      const clk = item.click || 0;
-      const cost = item.expense || 0;
-      const ord = item.direct_order_count || 0;
-      const gmv = item.direct_gmv || 0;
+      // 兼容多种可能的字段名
+      const imp = item.impression || item.impressions || 0;
+      const clk = item.clicks || item.click || 0;
+      const cost = parseFloat(item.expense || item.cost || item.spend || '0');
+      const ord = item.broad_order || item.broad_order_count || item.direct_order_count || item.order || item.orders || 0;
+      const gmv = parseFloat(item.broad_gmv || item.direct_gmv || item.gmv || item.sales || '0');
 
       totalImpressions += imp;
       totalClicks += clk;
-      totalSpend += parseFloat(cost);
+      totalSpend += cost;
       totalOrders += ord;
-      totalSales += parseFloat(gmv);
+      totalSales += gmv;
 
-      const day = item.date || 'N/A';
+      const day = item.date || item.report_date || 'N/A';
       if (!dailyMap[day]) {
-        dailyMap[day] = { date: day, impressions: 0, clicks: 0, ctr: 0, spend: 0, orders: 0, sales: 0, acos: 0, roas: 0, cvr: 0 };
+        dailyMap[day] = { date: day, impressions: 0, clicks: 0, ctr: 0, spend: 0, orders: 0, sales: 0, acos: 0, roas: 0, cvr: 0, cpc: 0 };
       }
       dailyMap[day].impressions += imp;
       dailyMap[day].clicks += clk;
-      dailyMap[day].spend += parseFloat(cost);
+      dailyMap[day].spend += cost;
       dailyMap[day].orders += ord;
-      dailyMap[day].sales += parseFloat(gmv);
+      dailyMap[day].sales += gmv;
     });
 
     // 计算每日衍生指标
@@ -112,6 +119,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       acos: d.sales > 0 ? parseFloat(((d.spend / d.sales) * 100).toFixed(2)) : 0,
       roas: d.spend > 0 ? parseFloat((d.sales / d.spend).toFixed(2)) : 0,
       cvr: d.clicks > 0 ? parseFloat(((d.orders / d.clicks) * 100).toFixed(2)) : 0,
+      cpc: d.clicks > 0 ? parseFloat((d.spend / d.clicks).toFixed(2)) : 0,
     })).sort((a, b) => a.date.localeCompare(b.date));
 
     const summary = {
@@ -124,11 +132,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       acos: totalSales > 0 ? parseFloat(((totalSpend / totalSales) * 100).toFixed(2)) : 0,
       roas: totalSpend > 0 ? parseFloat((totalSales / totalSpend).toFixed(2)) : 0,
       cvr: totalClicks > 0 ? parseFloat(((totalOrders / totalClicks) * 100).toFixed(2)) : 0,
+      cpc: totalClicks > 0 ? parseFloat((totalSpend / totalClicks).toFixed(2)) : 0,
       issueLinks: 0,
     };
 
     const diagnosis = {
-      totalSkus: campaignIds.split(',').length,
+      totalSkus: campaignIdList.length,
       burningSkus: 0,
       canAddBudget: 0,
       highImpNoConv: 0,
