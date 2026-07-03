@@ -7,14 +7,16 @@ const ShopeeCallback = () => {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('正在同步授权信息...');
   
-  const shopId = searchParams.get('shop_id');
+  const shopId = searchParams.get('shop_id') || searchParams.get('main_account_id');
   const code = searchParams.get('code');
 
   useEffect(() => {
-    if (shopId && code) {
-      // 在实际生产中，这里应该调用后端接口将 code 换成 access_token 并保存
-      // 这里我们先模拟成功并保存 shop_id
-      localStorage.setItem('shopee_shop_id', shopId);
+    if (code) {
+      // 只要拿到了 code，就算初步授权成功
+      const finalShopId = shopId || 'unknown';
+      localStorage.setItem('shopee_shop_id', finalShopId);
+      localStorage.setItem('shopee_auth_code', code);
+
       setStatus('success');
       setMessage('店铺授权成功！您现在可以返回看板查看数据。');
       
