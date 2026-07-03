@@ -6,22 +6,27 @@ const ShopeeCallback = () => {
   const [searchParams] = useSearchParams();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('正在同步授权信息...');
+  const [debugInfo, setDebugInfo] = useState('');
   
   const shopId = searchParams.get('shop_id') || searchParams.get('main_account_id');
   const code = searchParams.get('code');
 
   useEffect(() => {
     const exchangeToken = async () => {
+      setDebugInfo(`Step 1: code=${code ? '有' : '无'}, shopId=${shopId || '无'}`);
+      
       if (code && shopId) {
         try {
+          setDebugInfo(prev => prev + '\nStep 2: 正在请求后端换取 Token...');
           const res = await fetch(`/api/shopee/get-token?code=${code}&shop_id=${shopId}`);
           const data = await res.json();
+          setDebugInfo(prev => prev + `\nStep 3: 后端返回: ${JSON.stringify(data).substring(0, 200)}`);
           
           if (data.access_token) {
             localStorage.setItem('shopee_access_token', data.access_token);
-            localStorage.setItem('shopee_refresh_token', data.refresh_token);
+            localStorage.setItem('shopee_refresh_token', data.refresh_token || '');
             localStorage.setItem('shopee_shop_id', shopId);
-            localStorage.setItem('shopee_token_expiry', (Date.now() + data.expire_in * 1000).toString());
+            localStorage.setItem('shopee_token_expiry', (Date.now() + (data.expire_in || 14400) * 1000).toString());
             
             setStatus('success');
             setMessage('店铺授权成功！已建立加密连接。');
@@ -29,15 +34,16 @@ const ShopeeCallback = () => {
               window.location.href = '/?platform=settings';
             }, 2000);
           } else {
-            throw new Error(data.error || '换取令牌失败');
+            throw new Error(data.error || data.message || '换取令牌失败');
           }
         } catch (err: any) {
           setStatus('error');
           setMessage(`授权失败：${err.message}`);
+          setDebugInfo(prev => prev + `\nStep 4 ERROR: ${err.message}`);
         }
       } else {
         setStatus('error');
-        setMessage('授权失败：未获取到必要的授权参数。');
+        setMessage(`授权失败：缺少参数。code=${code ? '有' : '无'}, shopId=${shopId ? '有' : '无'}`);
       }
     };
 
@@ -71,7 +77,12 @@ const ShopeeCallback = () => {
               <AlertCircle className="text-red-600" size={32} />
             </div>
             <h2 className="text-xl font-bold text-gray-800 mb-2">授权失败</h2>
-            <p className="text-gray-500">{message}</p>
+            <p className="text-gray-500 text-sm">{message}</p>
+            {debugInfo && (
+              <div className="mt-4 p-3 bg-gray-50 rounded text-xs text-gray-400 text-left overflow-auto max-w-full whitespace-pre-wrap">
+                {debugInfo}
+              </div>
+            )}
             <button 
               onClick={() => window.location.href = '/?platform=settings'}
               className="mt-6 px-6 py-2 bg-blue-600 text-white rounded-lg font-medium"
