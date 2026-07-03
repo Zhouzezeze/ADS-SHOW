@@ -142,6 +142,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       canAddBudget: 0,
       highImpNoConv: 0,
       overallRoas: summary.roas,
+      totalSpend: summary.spend,
+      totalSales: summary.sales,
+      suggestion: `共 ${campaignIdList.length} 个广告活动，整体 ROAS ${summary.roas}，花费 $${summary.spend.toFixed(2)}，销售 $${summary.sales.toFixed(2)}。`,
     };
 
     res.status(200).json({ summary, daily, products: [], diagnosis });
@@ -150,3 +153,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.status(500).json({ error: error.response?.data?.message || error.message });
   }
 }
+
+export const config = {
+  maxDuration: 30,
+};
