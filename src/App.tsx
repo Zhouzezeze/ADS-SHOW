@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import StatCard from './components/StatCard';
 import DiagnosisSummary from './components/DiagnosisSummary';
@@ -8,12 +8,20 @@ import ProductTable from './components/ProductTable';
 import AdChart from './components/AdChart';
 import PlatformCompare from './components/PlatformCompare';
 import Settings from './pages/Settings';
+import ShopeeCallback from './pages/ShopeeCallback';
 import { useAdData } from './hooks/useAdData';
 import type { Platform } from './types';
 import { Loader2, AlertCircle, Info } from 'lucide-react';
 
 const App: React.FC = () => {
-  const [currentView, setCurrentView] = useState('dashboard');
+  // 检测是否在回调路径
+  const [isCallback, setIsCallback] = useState(window.location.pathname === '/shopee-callback');
+
+  // 从URL读取初始视图和平台
+  const [currentView, setCurrentView] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('view') || 'dashboard';
+  });
   const [currentPlatform, setCurrentPlatform] = useState<Platform>('total');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('all');
@@ -132,11 +140,24 @@ const App: React.FC = () => {
     );
   };
 
+  // 如果是回调页面，直接渲染回调组件
+  if (isCallback) {
+    return <ShopeeCallback />;
+  }
+
+  const handleViewChange = (view: string) => {
+    setCurrentView(view);
+    // 更新URL但不刷新页面
+    const url = new URL(window.location.href);
+    url.searchParams.set('view', view);
+    window.history.replaceState({}, '', url.toString());
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 flex">
       <Sidebar 
         currentView={currentView} 
-        onViewChange={setCurrentView}
+        onViewChange={handleViewChange}
         currentPlatform={currentPlatform}
         onPlatformChange={setCurrentPlatform}
       />
