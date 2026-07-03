@@ -1,8 +1,17 @@
-import React from 'react';
-import { Settings as SettingsIcon, Link2, ShieldCheck, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Settings as SettingsIcon, Link2, ShieldCheck, AlertCircle, Trash2, CheckCircle } from 'lucide-react';
 
 const SettingsPage = () => {
-  const [loading, setLoading] = React.useState(false);
+  const [loading, setLoading] = useState(false);
+  const [connectedShop, setConnectedShop] = useState<string | null>(null);
+
+  // 初始化时读取本地存储的店铺信息
+  useEffect(() => {
+    const savedShopId = localStorage.getItem('shopee_shop_id');
+    if (savedShopId) {
+      setConnectedShop(savedShopId);
+    }
+  }, []);
 
   const handleAuthorize = async () => {
     setLoading(true);
@@ -10,12 +19,20 @@ const SettingsPage = () => {
       const res = await fetch('/api/shopee/auth-url');
       const data = await res.json();
       if (data.url) {
-        window.location.href = data.url; // 跳转到 Shopee 官方授权页
+        window.location.href = data.url;
       }
     } catch (err) {
       alert('无法获取授权链接，请检查网络或配置');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDisconnect = () => {
+    if (window.confirm('确定要断开此店铺连接吗？')) {
+      localStorage.removeItem('shopee_shop_id');
+      localStorage.removeItem('shopee_auth_code');
+      setConnectedShop(null);
     }
   };
 
@@ -50,19 +67,52 @@ const SettingsPage = () => {
           </div>
           <div className="flex items-center justify-between text-sm">
             <span className="text-gray-600">当前已连接店铺</span>
-            <span className="text-gray-400 italic">暂无连接</span>
+            {connectedShop ? (
+              <div className="flex items-center gap-2">
+                <span className="text-blue-600 font-bold flex items-center gap-1">
+                  <CheckCircle size={14} /> ID: {connectedShop}
+                </span>
+                <button 
+                  onClick={handleDisconnect}
+                  className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                  title="断开连接"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ) : (
+              <span className="text-gray-400 italic">暂无连接</span>
+            )}
           </div>
         </div>
 
-        <button
-          onClick={handleAuthorize}
-          disabled={loading}
-          className={`w-full py-3 rounded-lg font-bold text-white transition-all ${
-            loading ? 'bg-gray-300' : 'bg-blue-600 hover:bg-blue-700 shadow-md'
-          }`}
-        >
-          {loading ? '正在跳转...' : '立即去 Shopee 授权'}
-        </button>
+        {connectedShop ? (
+          <div className="space-y-4">
+            <div className="p-4 bg-green-50 border border-green-100 rounded-lg flex items-center gap-3">
+              <CheckCircle className="text-green-500" size={20} />
+              <div>
+                <p className="text-sm font-bold text-green-800">店铺已成功连接</p>
+                <p className="text-xs text-green-600 mt-0.5">看板现在可以拉取该店铺的广告报表数据了。</p>
+              </div>
+            </div>
+            <button
+              onClick={handleAuthorize}
+              className="w-full py-2 text-sm text-blue-600 font-medium hover:bg-blue-50 rounded-lg transition-colors border border-blue-100"
+            >
+              更新授权 (重新登录)
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={handleAuthorize}
+            disabled={loading}
+            className={`w-full py-3 rounded-lg font-bold text-white transition-all ${
+              loading ? 'bg-gray-300' : 'bg-blue-600 hover:bg-blue-700 shadow-md'
+            }`}
+          >
+            {loading ? '正在跳转...' : '立即去 Shopee 授权'}
+          </button>
+        )}
 
         <div className="mt-6 flex items-start gap-2 p-4 bg-amber-50 rounded-lg">
           <AlertCircle size={18} className="text-amber-600 shrink-0 mt-0.5" />
