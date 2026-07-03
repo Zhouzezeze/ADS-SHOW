@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';
 
 const ShopeeCallback = () => {
@@ -11,24 +11,38 @@ const ShopeeCallback = () => {
   const code = searchParams.get('code');
 
   useEffect(() => {
-    if (code) {
-      // 只要拿到了 code，就算初步授权成功
-      const finalShopId = shopId || 'unknown';
-      localStorage.setItem('shopee_shop_id', finalShopId);
-      localStorage.setItem('shopee_auth_code', code);
+    const exchangeToken = async () => {
+      if (code && shopId) {
+        try {
+          const res = await fetch(`/api/shopee/get-token?code=${code}&shop_id=${shopId}`);
+          const data = await res.json();
+          
+          if (data.access_token) {
+            localStorage.setItem('shopee_access_token', data.access_token);
+            localStorage.setItem('shopee_refresh_token', data.refresh_token);
+            localStorage.setItem('shopee_shop_id', shopId);
+            localStorage.setItem('shopee_token_expiry', (Date.now() + data.expire_in * 1000).toString());
+            
+            setStatus('success');
+            setMessage('店铺授权成功！已建立加密连接。');
+            setTimeout(() => {
+              window.location.href = '/?platform=settings';
+            }, 2000);
+          } else {
+            throw new Error(data.error || '换取令牌失败');
+          }
+        } catch (err: any) {
+          setStatus('error');
+          setMessage(`授权失败：${err.message}`);
+        }
+      } else {
+        setStatus('error');
+        setMessage('授权失败：未获取到必要的授权参数。');
+      }
+    };
 
-      setStatus('success');
-      setMessage('店铺授权成功！您现在可以返回看板查看数据。');
-      
-      // 3秒后跳转回设置页
-      setTimeout(() => {
-        window.location.href = '/?platform=settings';
-      }, 3000);
-    } else {
-      setStatus('error');
-      setMessage('授权失败：未获取到店铺信息。');
-    }
-  }, [shopId, code]);
+    exchangeToken();
+  }, [code, shopId]);
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">

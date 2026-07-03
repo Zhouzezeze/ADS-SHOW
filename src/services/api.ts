@@ -4,11 +4,32 @@ import { shopeeMockData, amazonMockData } from '../mock/data';
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export const fetchAdData = async (platform: Platform): Promise<PlatformData> => {
-  await delay(500);
+  if (platform === 'shopee') {
+    const shopId = localStorage.getItem('shopee_shop_id');
+    const accessToken = localStorage.getItem('shopee_access_token');
+    
+    if (shopId && accessToken) {
+      try {
+        const res = await fetch(`/api/shopee/ads?shop_id=${shopId}&access_token=${accessToken}`);
+        const data = await res.json();
+        if (data.summary) {
+          // 合并真实数据与部分 Mock 数据（如每日趋势和产品列表，因为这些需要额外接口）
+          return {
+            ...data,
+            daily: shopeeMockData.daily, // 暂时保留 Mock 趋势图
+            products: shopeeMockData.products, // 暂时保留 Mock 产品列表
+          };
+        }
+      } catch (err) {
+        console.error('Fetch Shopee Real Data Failed:', err);
+      }
+    }
+    return shopeeMockData;
+  }
 
-  if (platform === 'shopee') return shopeeMockData;
   if (platform === 'amazon') return amazonMockData;
 
+  // 总览合并逻辑保持不变...
   const totalSummary = {
     impressions: shopeeMockData.summary.impressions + amazonMockData.summary.impressions,
     clicks: shopeeMockData.summary.clicks + amazonMockData.summary.clicks,
