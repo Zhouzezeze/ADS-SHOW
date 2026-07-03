@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, ShieldAlert, Link2, ExternalLink, Key, LayoutGrid } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, Link2, ExternalLink, Key, Trash2, Loader2 } from 'lucide-react';
 
 const Settings: React.FC = () => {
   const [shopeeConnected, setShopeeConnected] = useState(false);
   const [shopId, setShopId] = useState('');
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('shopee_access_token');
@@ -15,27 +16,33 @@ const Settings: React.FC = () => {
   }, []);
 
   const handleAuth = async () => {
+    setLoading(true);
     try {
-      // In a real app, this calls the backend to get the Shopee Auth URL
-      // window.location.href = 'https://partner.shopeemobile.com/api/v2/shop/auth_partner...';
-      alert('正在前往 Shopee 授权页面...');
-      // For demo purposes, we'll just simulate it after a delay
-      setTimeout(() => {
-        localStorage.setItem('shopee_access_token', 'mock_token_' + Date.now());
-        localStorage.setItem('shopee_shop_id', '12345678');
-        localStorage.setItem('shopee_token_expire', (Date.now() + 3600 * 1000).toString());
-        window.location.reload();
-      }, 1000);
+      const res = await fetch('/api/shopee/auth-url');
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert('无法获取授权链接，请检查后端配置');
+      }
     } catch (err) {
-      console.error(err);
+      alert('网络错误，无法连接授权服务');
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleDisconnect = () => {
-    localStorage.removeItem('shopee_access_token');
-    localStorage.removeItem('shopee_shop_id');
-    localStorage.removeItem('shopee_token_expire');
-    window.location.reload();
+    if (window.confirm('确定要断开此店铺连接吗？')) {
+      localStorage.removeItem('shopee_access_token');
+      localStorage.removeItem('shopee_refresh_token');
+      localStorage.removeItem('shopee_shop_id');
+      localStorage.removeItem('shopee_token_expiry');
+      localStorage.removeItem('shopee_token_expire');
+      setShopeeConnected(false);
+      setShopId('');
+      window.location.reload();
+    }
   };
 
   return (
@@ -71,18 +78,28 @@ const Settings: React.FC = () => {
               </div>
               
               {shopeeConnected ? (
-                <button 
-                  onClick={handleDisconnect}
-                  className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg font-medium transition-colors"
-                >
-                  断开连接
-                </button>
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={handleAuth}
+                    className="px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg font-medium transition-colors border border-blue-100 text-sm"
+                  >
+                    更新授权
+                  </button>
+                  <button 
+                    onClick={handleDisconnect}
+                    className="flex items-center gap-1 px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg font-medium transition-colors text-sm"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> 断开
+                  </button>
+                </div>
               ) : (
                 <button 
                   onClick={handleAuth}
-                  className="flex items-center gap-2 bg-orange-500 text-white px-6 py-2.5 rounded-lg font-bold hover:bg-orange-600 transition-all shadow-md shadow-orange-100"
+                  disabled={loading}
+                  className="flex items-center gap-2 bg-orange-500 text-white px-6 py-2.5 rounded-lg font-bold hover:bg-orange-600 transition-all shadow-md shadow-orange-100 disabled:bg-gray-300"
                 >
-                  <Link2 className="w-4 h-4" /> 立即授权
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
+                  {loading ? '正在跳转...' : '立即去 Shopee 授权'}
                 </button>
               )}
             </div>
@@ -94,8 +111,17 @@ const Settings: React.FC = () => {
                   <div className="text-sm font-mono text-slate-700">{shopId}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-slate-500 font-bold uppercase">授权范围</div>
-                  <div className="text-sm text-slate-700">Ad Data & Analytics</div>
+                  <div className="text-xs text-slate-500 font-bold uppercase">Token 有效期</div>
+                  <div className="text-sm text-slate-700">
+                    {(() => {
+                      const expiry = localStorage.getItem('shopee_token_expiry') || localStorage.getItem('shopee_token_expire');
+                      if (!expiry) return '未知';
+                      const remaining = parseInt(expiry) - Date.now();
+                      if (remaining <= 0) return '已过期（自动续期中）';
+                      const hours = Math.floor(remaining / (1000 * 60 * 60));
+                      return `剩余约 ${hours} 小时`;
+                    })()}
+                  </div>
                 </div>
               </div>
             )}
@@ -125,20 +151,19 @@ const Settings: React.FC = () => {
 
       <div className="bg-blue-50 p-8 rounded-2xl border border-blue-100">
         <h3 className="text-lg font-bold text-blue-900 mb-4 flex items-center gap-2">
-          <LayoutGrid className="w-5 h-5" /> 环境变量配置说明
+          <ExternalLink className="w-5 h-5" /> 环境变量配置说明
         </h3>
         <div className="space-y-4">
           <p className="text-blue-800 text-sm">
-            本应用使用 Vercel 部署，如果您需要连接生产环境，请在 Vercel 控制台中配置以下环境变量：
+            本应用使用 Vercel 部署，请在 Vercel 控制台 (Settings → Environment Variables) 配置以下变量：
           </p>
           <div className="bg-white p-4 rounded-lg font-mono text-xs text-blue-900 space-y-2 border border-blue-200">
-            <div>SHOPEE_PARTNER_ID=xxxxx</div>
-            <div>SHOPEE_PARTNER_KEY=xxxxx</div>
-            <div>REDIRECT_URI=https://ads-show-lemon.vercel.app/api/shopee/callback</div>
+            <div>VITE_SHOPEE_PARTNER_ID=2036671</div>
+            <div>VITE_SHOPEE_PARTNER_KEY=shpkxxxxxxxxxxxxx</div>
           </div>
-          <div className="flex items-center gap-2 text-blue-600 text-sm font-medium hover:underline cursor-pointer">
-            <ExternalLink className="w-4 h-4" /> 查看完整的开发者文档
-          </div>
+          <p className="text-blue-600 text-xs">
+            配置完成后需要 Redeploy 才能生效。Token 有效期 4 小时，系统会自动用 refresh_token 续期，30 天内无需重新授权。
+          </p>
         </div>
       </div>
     </div>
