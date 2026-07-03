@@ -7,48 +7,67 @@ const ShopeeCallback = () => {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('正在同步授权信息...');
   const [debugInfo, setDebugInfo] = useState('');
-  
-  const shopId = searchParams.get('shop_id') || searchParams.get('main_account_id');
+
+  // Shopee 回调可能返回 shop_id 或 main_account_id
+  const shopId = searchParams.get('shop_id');
+  const mainAccountId = searchParams.get('main_account_id');
   const code = searchParams.get('code');
+
+  // 判断是哪种授权模式
+  const isMainAccount = !shopId && !!mainAccountId;
+  const idToUse = shopId || mainAccountId;
 
   useEffect(() => {
     const exchangeToken = async () => {
-      setDebugInfo(`Step 1: code=${code ? '有' : '无'}, shopId=${shopId || '无'}`);
-      
-      if (code && shopId) {
+      setDebugInfo(`Params: code=${code ? '有' : '无'}, shop_id=${shopId || '无'}, main_account_id=${mainAccountId || '无'}, mode=${isMainAccount ? '主账号' : '普通店铺'}`);
+
+      if (code && idToUse) {
         try {
-          setDebugInfo(prev => prev + '\nStep 2: 正在请求后端换取 Token...');
-          const res = await fetch(`/api/shopee/get-token?code=${code}&shop_id=${shopId}`);
+          // 根据模式决定参数
+          const apiUrl = isMainAccount
+            ? `/api/shopee/get-token?code=${code}&shop_id=${idToUse}&is_main_account=1`
+            : `/api/shopee/get-token?code=${code}&shop_id=${idToUse}`;
+
+          setDebugInfo(prev => prev + `\nCalling: ${apiUrl}`);
+          const res = await fetch(apiUrl);
           const data = await res.json();
-          setDebugInfo(prev => prev + `\nStep 3: 后端返回: ${JSON.stringify(data).substring(0, 200)}`);
-          
+          setDebugInfo(prev => prev + `\nResponse: ${JSON.stringify(data).substring(0, 300)}`);
+
           if (data.access_token) {
+            // 存储真正的 shop_id（如果 Shopee 返回了，用返回的；否则用回调的）
+            const finalShopId = data.shop_id || idToUse;
+
             localStorage.setItem('shopee_access_token', data.access_token);
             localStorage.setItem('shopee_refresh_token', data.refresh_token || '');
-            localStorage.setItem('shopee_shop_id', shopId);
+            localStorage.setItem('shopee_shop_id', finalShopId);
             localStorage.setItem('shopee_token_expiry', (Date.now() + (data.expire_in || 14400) * 1000).toString());
-            
+
+            // 如果有多个店铺，也存起来
+            if (data.shop_id_list && data.shop_id_list.length > 0) {
+              localStorage.setItem('shopee_shop_id_list', JSON.stringify(data.shop_id_list));
+            }
+
             setStatus('success');
-            setMessage('店铺授权成功！已建立加密连接。');
+            setMessage(`店铺授权成功！Shop ID: ${finalShopId}`);
             setTimeout(() => {
               window.location.href = '/?platform=settings';
             }, 2000);
           } else {
-            throw new Error(data.error || data.message || '换取令牌失败');
+            throw new Error(data.error || '换取令牌失败');
           }
         } catch (err: any) {
           setStatus('error');
           setMessage(`授权失败：${err.message}`);
-          setDebugInfo(prev => prev + `\nStep 4 ERROR: ${err.message}`);
+          setDebugInfo(prev => prev + `\nError: ${err.message}`);
         }
       } else {
         setStatus('error');
-        setMessage(`授权失败：缺少参数。code=${code ? '有' : '无'}, shopId=${shopId ? '有' : '无'}`);
+        setMessage('授权失败：缺少必要参数');
       }
     };
 
     exchangeToken();
-  }, [code, shopId]);
+  }, [code, shopId, mainAccountId, idToUse, isMainAccount]);
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
@@ -59,7 +78,7 @@ const ShopeeCallback = () => {
             <h2 className="text-xl font-bold text-gray-800">{message}</h2>
           </div>
         )}
-        
+
         {status === 'success' && (
           <div className="flex flex-col items-center">
             <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
@@ -83,7 +102,7 @@ const ShopeeCallback = () => {
                 {debugInfo}
               </div>
             )}
-            <button 
+            <button
               onClick={() => window.location.href = '/?platform=settings'}
               className="mt-6 px-6 py-2 bg-blue-600 text-white rounded-lg font-medium"
             >
