@@ -16,17 +16,21 @@ const ShopeeCallback: React.FC = () => {
     const exchangeToken = async () => {
       if (!code || !idToUse) {
         setStatus('error');
-        setMessage('授权失败：缺少必要参数');
+        setMessage('授权失败：缺少必要参数 (code 或 shop_id)');
         return;
       }
 
       try {
+        // 构建 API URL，同时尝试两种模式
         const apiUrl = isMainAccount
           ? `/api/shopee/get-token?code=${code}&shop_id=${idToUse}&is_main_account=1`
           : `/api/shopee/get-token?code=${code}&shop_id=${idToUse}`;
 
+        console.log('[ShopeeCallback] Exchanging token with URL:', apiUrl);
         const res = await fetch(apiUrl);
         const data = await res.json();
+
+        console.log('[ShopeeCallback] Token exchange response:', data);
 
         if (data.access_token) {
           const finalShopId = data.shop_id || idToUse;
@@ -44,6 +48,7 @@ const ShopeeCallback: React.FC = () => {
           throw new Error(data.error || '换取令牌失败');
         }
       } catch (err: any) {
+        console.error('[ShopeeCallback] Token exchange error:', err);
         setStatus('error');
         setMessage(`授权失败：${err.message}`);
       }

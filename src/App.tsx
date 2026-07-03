@@ -9,6 +9,7 @@ import AdChart from './components/AdChart';
 import PlatformCompare from './components/PlatformCompare';
 import Settings from './pages/Settings';
 import ShopeeCallback from './pages/ShopeeCallback';
+import DebugPanel from './pages/DebugPanel';
 import { useAdData } from './hooks/useAdData';
 import type { Platform } from './types';
 import { Loader2, AlertCircle, Info } from 'lucide-react';
@@ -176,7 +177,8 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        {currentView === 'settings' ? <Settings /> : renderDashboard()}
+        {currentView === 'settings' ? <Settings /> : 
+         currentView === 'debug' ? <DebugPanel /> : renderDashboard()}
       </main>
     </div>
   );

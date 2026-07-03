@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, ShoppingCart, BarChart3, Settings } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, BarChart3, Settings, Bug } from 'lucide-react';
 import type { Platform } from '../types';
 
 interface SidebarProps {
@@ -15,6 +15,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, currentPla
     { id: 'shopee', label: 'Shopee广告', icon: ShoppingCart, view: 'dashboard' },
     { id: 'amazon', label: 'Amazon广告', icon: BarChart3, view: 'dashboard' },
     { id: 'settings', label: '设置', icon: Settings, view: 'settings' },
+    { id: 'debug', label: '调试', icon: Bug, view: 'debug' },
   ];
 
   return (

@@ -23,6 +23,21 @@ async function shopeeApiCall(path: string, partnerId: number, partnerKey: string
   }
 }
 
+// 新增：获取广告活动详情（包括商品信息）
+async function getCampaignDetails(campaignId: number, partnerId: number, partnerKey: string, accessToken: string, shopId: string) {
+  try {
+    const detailRes = await shopeeApiCall(
+      "/api/v2/ads/get_product_campaign_detail",
+      partnerId, partnerKey, accessToken, shopId,
+      { campaign_id: campaignId }
+    );
+    return detailRes.response || detailRes;
+  } catch (error: any) {
+    console.error(`[Shopee] Failed to get campaign detail for ${campaignId}:`, error.message);
+    return null;
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   const { shop_id, access_token } = req.query;
@@ -36,8 +51,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     // Step 1: 获取所有广告活动 ID
+    // 注意：Shopee 广告 API 需要先获取 campaign_id_list，然后才能获取性能数据
     const campaignRes = await shopeeApiCall(
-      "/api/v2/ads/get_product_level_campaign_id_list",
+      "/api/v2/ads/get_campaign_id_list",
       partnerId, partnerKey, access_token as string, shop_id as string,
       { ad_type: 'all', offset: 0, limit: 100 }
     );

@@ -126,10 +126,11 @@ export const fetchAdData = async (platform: Platform): Promise<FetchResult> => {
         console.log('[Shopee] API Response status:', response.status);
 
         if (!response.ok) {
+          console.error('[Shopee] API Error:', data.error || `HTTP ${response.status}`);
           return {
             data: generateMockData('shopee'),
             isReal: false,
-            source: '模拟数据（API请求失败）',
+            source: `模拟数据（API请求失败: ${data.error || `HTTP ${response.status}`}）`,
             error: data.error || `HTTP ${response.status}`
           };
         }

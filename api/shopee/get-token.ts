@@ -85,9 +85,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (finalShopId) {
         try {
           const verifyPath = "/api/v2/shop/get_shop_info";
-          const verifyBaseString = `${partnerId}${verifyPath}${timestamp}${successData.access_token}${finalShopId}`;
+          const verifyTimestamp = Math.floor(Date.now() / 1000);
+          const verifyBaseString = `${partnerId}${verifyPath}${verifyTimestamp}${successData.access_token}${finalShopId}`;
           const verifySign = crypto.createHmac('sha256', partnerKey).update(verifyBaseString).digest('hex');
-          const verifyUrl = `${host}${verifyPath}?partner_id=${partnerId}&timestamp=${timestamp}&sign=${verifySign}&access_token=${successData.access_token}&shop_id=${finalShopId}`;
+          const verifyUrl = `${host}${verifyPath}?partner_id=${partnerId}&timestamp=${verifyTimestamp}&sign=${verifySign}&access_token=${successData.access_token}&shop_id=${finalShopId}`;
 
           const verifyRes = await axios.get(verifyUrl);
           if (verifyRes.data) {
