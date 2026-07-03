@@ -22,7 +22,7 @@ function DashboardContent() {
 
   const [activeStatus, setActiveStatus] = useState<string>('全部');
   const [searchQuery, setSearchQuery] = useState('');
-  const { data: currentData, loading } = useAdData(activePlatform as Platform);
+  const { data: currentData, loading, isRealData, dataSource, error } = useAdData(activePlatform as Platform);
 
   const filteredProducts = useMemo(() => {
     if (!currentData || activePlatform === 'settings') return [];
@@ -76,9 +76,24 @@ function DashboardContent() {
                 <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
                   广告健康看板
                 </h1>
-                <span className="px-2 py-1 bg-blue-100 text-blue-600 text-[10px] font-bold rounded">VER 1.2</span>
+                <div className="flex items-center gap-2">
+                  {isRealData ? (
+                    <span className="px-2 py-1 bg-green-100 text-green-600 text-[10px] font-bold rounded flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
+                      真实数据
+                    </span>
+                  ) : (
+                    <span className="px-2 py-1 bg-orange-100 text-orange-600 text-[10px] font-bold rounded">
+                      模拟数据
+                    </span>
+                  )}
+                  <span className="px-2 py-1 bg-blue-100 text-blue-600 text-[10px] font-bold rounded">VER 1.3</span>
+                </div>
               </div>
-              <p className="text-gray-400 text-xs mt-1">数据来自 Shopee / Amazon API 自动同步 · 诊断基于链接分析缓存</p>
+              <p className="text-gray-400 text-xs mt-1">
+                数据源: {dataSource}
+                {error && <span className="text-red-500 ml-2">| 错误: {error}</span>}
+              </p>
             </header>
 
 

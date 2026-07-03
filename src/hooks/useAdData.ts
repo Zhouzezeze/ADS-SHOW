@@ -6,6 +6,8 @@ export const useAdData = (platform: Platform) => {
   const [data, setData] = useState<PlatformData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isRealData, setIsRealData] = useState(false);
+  const [dataSource, setDataSource] = useState<string>('');
 
   useEffect(() => {
     if (platform === 'settings') {
@@ -15,10 +17,15 @@ export const useAdData = (platform: Platform) => {
     
     const loadData = async () => {
       setLoading(true);
+      setError(null);
       try {
         const result = await fetchAdData(platform);
-        setData(result);
-        setError(null);
+        setData(result.data);
+        setIsRealData(result.isReal);
+        setDataSource(result.source);
+        if (result.error) {
+          setError(result.error);
+        }
       } catch (err) {
         setError('加载广告数据失败');
       } finally {
@@ -29,5 +36,5 @@ export const useAdData = (platform: Platform) => {
     loadData();
   }, [platform]);
 
-  return { data, loading, error };
+  return { data, loading, error, isRealData, dataSource };
 };

@@ -1,45 +1,70 @@
 import type { Platform, PlatformData } from '../types';
 import { shopeeMockData, amazonMockData } from '../mock/data';
 
-export const fetchAdData = async (platform: Platform): Promise<PlatformData> => {
-  console.log(`[Dashboard] Attempting to fetch data for: ${platform}`);
+interface FetchResult {
+  data: PlatformData;
+  isReal: boolean;
+  source: string;
+  error?: string;
+}
+
+export const fetchAdData = async (platform: Platform): Promise<FetchResult> => {
+  console.log(`[Dashboard] Fetching data for: ${platform}`);
 
   if (platform === 'shopee') {
     const shopId = localStorage.getItem('shopee_shop_id');
     const accessToken = localStorage.getItem('shopee_access_token');
     
-    console.log(`[Shopee] Auth Status - ShopID: ${shopId}, HasToken: ${!!accessToken}`);
+    console.log(`[Shopee] ShopID: ${shopId}, HasToken: ${!!accessToken}`);
 
     if (shopId && accessToken) {
       try {
         const response = await fetch(`/api/shopee/ads?shop_id=${shopId}&access_token=${accessToken}`);
-        
+        const data = await response.json();
+        console.log('[Shopee] API Response:', data);
+
         if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`HTTP ${response.status}: ${errorText}`);
+          return {
+            data: shopeeMockData,
+            isReal: false,
+            source: '模拟数据（API请求失败）',
+            error: data.error || `HTTP ${response.status}`
+          };
         }
 
-        const data = await response.json();
-        console.log('[Shopee] Real data received:', data);
-
         if (data && data.summary) {
-          // 如果真实数据拉取成功但某些字段为空（如产品列表），用 Mock 补充显示
           return {
-            ...data,
-            daily: data.daily?.length > 0 ? data.daily : shopeeMockData.daily, 
-            products: data.products?.length > 0 ? data.products : shopeeMockData.products,
+            data: {
+              ...data,
+              daily: data.daily?.length > 0 ? data.daily : shopeeMockData.daily,
+              products: data.products?.length > 0 ? data.products : shopeeMockData.products,
+            },
+            isReal: true,
+            source: 'Shopee 真实数据'
           };
         }
       } catch (err: any) {
-        console.error('[Shopee] Real data fetch failed:', err.message);
+        return {
+          data: shopeeMockData,
+          isReal: false,
+          source: '模拟数据（网络错误）',
+          error: err.message
+        };
       }
     } else {
-      console.warn('[Shopee] Missing credentials, falling back to mock data.');
+      return {
+        data: shopeeMockData,
+        isReal: false,
+        source: '模拟数据（未授权）',
+        error: '缺少 Token 或 ShopID'
+      };
     }
-    return shopeeMockData;
+    return { data: shopeeMockData, isReal: false, source: '模拟数据' };
   }
 
-  if (platform === 'amazon') return amazonMockData;
+  if (platform === 'amazon') {
+    return { data: amazonMockData, isReal: false, source: '模拟数据（Amazon未接入）' };
+  }
 
   const totalSummary = {
     impressions: shopeeMockData.summary.impressions + amazonMockData.summary.impressions,
@@ -55,9 +80,13 @@ export const fetchAdData = async (platform: Platform): Promise<PlatformData> => 
   };
 
   return { 
-    summary: totalSummary, 
-    daily: shopeeMockData.daily, 
-    products: [...shopeeMockData.products, ...amazonMockData.products], 
-    diagnosis: shopeeMockData.diagnosis 
+    data: {
+      summary: totalSummary,
+      daily: shopeeMockData.daily,
+      products: [...shopeeMockData.products, ...amazonMockData.products],
+      diagnosis: shopeeMockData.diagnosis
+    },
+    isReal: false,
+    source: '模拟数据'
   };
 };
