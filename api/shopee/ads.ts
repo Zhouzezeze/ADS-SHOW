@@ -44,9 +44,7 @@ async function shopeeApiCall(
   const body = response.data;
 
   if (body.error && body.error !== '') {
-    const errMsg = `API ${path} failed: ${body.error} (${body.message || ''})`;
-    console.error('[ads]', errMsg);
-    return { _error: errMsg, _raw: body };
+    return { _error: `${body.error}: ${body.message || ''}`, _raw: body };
   }
   return body;
 }
@@ -70,171 +68,146 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const startDate = formatDate(weekAgo);
     const endDate = formatDate(today);
 
-    // 并行请求所有数据 (使用与 check-permissions.ts 完全相同的方式)
-    const [balanceRes, shopDailyRes, campaignListRes] = await Promise.all([
-      shopeeApiCall("/api/v2/ads/get_total_balance", partnerId, partnerKey, accessToken, shopId),
-      shopeeApiCall("/api/v2/ads/get_all_cpc_ads_daily_performance", partnerId, partnerKey, accessToken, shopId, {
-        start_date: startDate,
-        end_date: endDate,
-      }),
-      shopeeApiCall("/api/v2/ads/get_product_level_campaign_id_list", partnerId, partnerKey, accessToken, shopId, {
-        offset: '0',
-        limit: '100',
-      }),
+    // 并行请求: 店铺日度表现 + 余额
+    const [dailyRes, balanceRes] = await Promise.all([
+      shopeeApiCall(
+        "/api/v2/ads/get_all_cpc_ads_daily_performance",
+        partnerId, partnerKey, accessToken, shopId,
+        { start_date: startDate, end_date: endDate }
+      ),
+      shopeeApiCall(
+        "/api/v2/ads/get_total_balance",
+        partnerId, partnerKey, accessToken, shopId
+      ),
     ]);
 
-    // 余额
+    // 提取日度数据
+    let records: any[] = [];
+    if (!dailyRes._error) {
+      records = Array.isArray(dailyRes.response) ? dailyRes.response : [];
+      console.log(`[ads] Daily records count: ${records.length}`);
+      if (records.length > 0) {
+        console.log(`[ads] First record keys: ${Object.keys(records[0]).join(', ')}`);
+        console.log(`[ads] First record:`, JSON.stringify(records[0]));
+      }
+    }
+
+    // 提取余额
     let totalBalance = 0;
     if (!balanceRes._error) {
       totalBalance = balanceRes.response?.total_balance || 0;
     }
 
-    // 店铺日度表现
-    let shopDaily: any[] = [];
-    if (!shopDailyRes._error) {
-      shopDaily = Array.isArray(shopDailyRes.response) ? shopDailyRes.response : [];
-    }
+    // ===== 聚合汇总 =====
+    let totalImpressions = 0;
+    let totalClicks = 0;
+    let totalSpend = 0;
+    let totalOrders = 0;
+    let totalSales = 0;
 
-    // 广告活动 ID 列表
-    let campaignIds: number[] = [];
-    if (!campaignListRes._error) {
-      campaignIds = campaignListRes.response?.campaign_id_list || [];
-    }
+    records.forEach((item: any) => {
+      const imp = parseInt(String(item.impression || '0'), 10);
+      const clk = parseInt(String(item.clicks || '0'), 10);
+      const spend = parseFloat(String(item.expense || '0'));
+      const orders = parseInt(String(item.broad_order || '0'), 10);
+      const sales = parseFloat(String(item.broad_gmv || '0'));
 
-    // 获取商品级日度表现
-    let productPerfData: any[] = [];
-    if (campaignIds.length > 0) {
-      const productPerfRes = await shopeeApiCall(
-        "/api/v2/ads/get_product_campaign_daily_performance",
-        partnerId, partnerKey, accessToken, shopId,
-        {
-          start_date: startDate,
-          end_date: endDate,
-          campaign_id_list: campaignIds.join(','),
-        }
-      );
-      if (!productPerfRes._error) {
-        productPerfData = Array.isArray(productPerfRes.response?.metrics_list)
-          ? productPerfRes.response.metrics_list
-          : (Array.isArray(productPerfRes.response) ? productPerfRes.response : []);
-      }
-    }
-
-    // ===== 聚合店铺级汇总 =====
-    let totalImpressions = 0, totalClicks = 0, totalSpend = 0;
-    let totalBroadOrders = 0, totalBroadGmv = 0;
-    const dailyMap: Record<string, any> = {};
-
-    shopDaily.forEach((item: any) => {
-      const imp = Number(item.impression || 0);
-      const clk = Number(item.clicks || 0);
-      const expense = parseFloat(item.expense || '0');
-      const bOrder = Number(item.broad_order || 0);
-      const bGmv = parseFloat(item.broad_gmv || '0');
+      console.log(`[ads] Day ${item.date}: imp=${imp}, clk=${clk}, spend=${spend}, orders=${orders}, sales=${sales}`);
 
       totalImpressions += imp;
       totalClicks += clk;
-      totalSpend += expense;
-      totalBroadOrders += bOrder;
-      totalBroadGmv += bGmv;
-
-      const day = item.date || '';
-      if (!dailyMap[day]) {
-        dailyMap[day] = { date: day, impressions: 0, clicks: 0, spend: 0, orders: 0, sales: 0 };
-      }
-      dailyMap[day].impressions += imp;
-      dailyMap[day].clicks += clk;
-      dailyMap[day].spend += expense;
-      dailyMap[day].orders += bOrder;
-      dailyMap[day].sales += bGmv;
+      totalSpend += spend;
+      totalOrders += orders;
+      totalSales += sales;
     });
+
+    console.log(`[ads] Totals: imp=${totalImpressions}, clk=${totalClicks}, spend=${totalSpend}, orders=${totalOrders}, sales=${totalSales}`);
 
     const summary = {
       impressions: totalImpressions,
       clicks: totalClicks,
       ctr: totalImpressions > 0 ? parseFloat(((totalClicks / totalImpressions) * 100).toFixed(2)) : 0,
       spend: parseFloat(totalSpend.toFixed(2)),
-      orders: totalBroadOrders,
-      sales: parseFloat(totalBroadGmv.toFixed(2)),
-      acos: totalBroadGmv > 0 ? parseFloat(((totalSpend / totalBroadGmv) * 100).toFixed(2)) : 0,
-      roas: totalSpend > 0 ? parseFloat((totalBroadGmv / totalSpend).toFixed(2)) : 0,
-      cvr: totalClicks > 0 ? parseFloat(((totalBroadOrders / totalClicks) * 100).toFixed(2)) : 0,
+      orders: totalOrders,
+      sales: parseFloat(totalSales.toFixed(2)),
+      acos: totalSales > 0 ? parseFloat(((totalSpend / totalSales) * 100).toFixed(2)) : 0,
+      roas: totalSpend > 0 ? parseFloat((totalSales / totalSpend).toFixed(2)) : 0,
+      cvr: totalClicks > 0 ? parseFloat(((totalOrders / totalClicks) * 100).toFixed(2)) : 0,
       cpc: totalClicks > 0 ? parseFloat((totalSpend / totalClicks).toFixed(2)) : 0,
       issueLinks: 0,
       total_balance: totalBalance,
     };
 
-    const daily = Object.values(dailyMap).map((d: any) => ({
-      ...d,
-      spend: parseFloat(d.spend.toFixed(2)),
-      sales: parseFloat(d.sales.toFixed(2)),
-      ctr: d.impressions > 0 ? parseFloat(((d.clicks / d.impressions) * 100).toFixed(2)) : 0,
-      acos: d.sales > 0 ? parseFloat(((d.spend / d.sales) * 100).toFixed(2)) : 0,
-      roas: d.spend > 0 ? parseFloat((d.sales / d.spend).toFixed(2)) : 0,
-      cvr: d.clicks > 0 ? parseFloat(((d.orders / d.clicks) * 100).toFixed(2)) : 0,
-      cpc: d.clicks > 0 ? parseFloat((d.spend / d.clicks).toFixed(2)) : 0,
-    })).sort((a, b) => {
-      const [ad, am, ay] = a.date.split('-').map(Number);
-      const [bd, bm, by] = b.date.split('-').map(Number);
-      return new Date(ay, am - 1, ad).getTime() - new Date(by, bm - 1, bd).getTime();
+    // 每日数据
+    const daily = records.map((item: any) => {
+      const imp = parseInt(String(item.impression || '0'), 10);
+      const clk = parseInt(String(item.clicks || '0'), 10);
+      const spend = parseFloat(String(item.expense || '0'));
+      const orders = parseInt(String(item.broad_order || '0'), 10);
+      const sales = parseFloat(String(item.broad_gmv || '0'));
+
+      return {
+        date: item.date || '',
+        impressions: imp,
+        clicks: clk,
+        ctr: imp > 0 ? parseFloat(((clk / imp) * 100).toFixed(2)) : 0,
+        spend: parseFloat(spend.toFixed(2)),
+        orders,
+        sales: parseFloat(sales.toFixed(2)),
+        acos: sales > 0 ? parseFloat(((spend / sales) * 100).toFixed(2)) : 0,
+        roas: spend > 0 ? parseFloat((sales / spend).toFixed(2)) : 0,
+        cvr: clk > 0 ? parseFloat(((orders / clk) * 100).toFixed(2)) : 0,
+        cpc: clk > 0 ? parseFloat((spend / clk).toFixed(2)) : 0,
+      };
     });
 
-    // ===== 商品级数据 =====
-    const productMap: Record<string, any> = {};
-    productPerfData.forEach((item: any) => {
-      const key = String(item.item_id || item.model_id || item.product_id || item.campaign_id || 'unknown');
-      if (!productMap[key]) {
-        productMap[key] = {
-          id: key,
-          sku: String(item.item_id || key),
-          name: item.item_name || item.name || `商品 ${key}`,
-          image: item.image_url || item.image || '',
-          campaign_name: item.campaign_name || '',
-          ad_group: item.ad_group_name || '',
-          date: '',
-          status: '正常' as const,
-          impressions: 0, clicks: 0, spend: 0, orders: 0, sales: 0,
-          ctr: 0, acos: 0, roas: 0, cvr: 0, cpc: 0,
-        };
-      }
-      const p = productMap[key];
-      p.impressions += Number(item.impression || 0);
-      p.clicks += Number(item.clicks || 0);
-      p.spend += parseFloat(item.expense || '0');
-      p.orders += Number(item.broad_order || item.direct_order || 0);
-      p.sales += parseFloat(item.broad_gmv || item.direct_gmv || '0');
-    });
+    // 商品数据 - 用每条日度记录作为一行展示
+    const products = records.map((item: any, idx: number) => {
+      const imp = parseInt(String(item.impression || '0'), 10);
+      const clk = parseInt(String(item.clicks || '0'), 10);
+      const spend = parseFloat(String(item.expense || '0'));
+      const orders = parseInt(String(item.broad_order || '0'), 10);
+      const sales = parseFloat(String(item.broad_gmv || '0'));
 
-    const products = Object.values(productMap).map((p: any) => {
-      p.spend = parseFloat(p.spend.toFixed(2));
-      p.sales = parseFloat(p.sales.toFixed(2));
-      p.ctr = p.impressions > 0 ? parseFloat(((p.clicks / p.impressions) * 100).toFixed(2)) : 0;
-      p.acos = p.sales > 0 ? parseFloat(((p.spend / p.sales) * 100).toFixed(2)) : 0;
-      p.roas = p.spend > 0 ? parseFloat((p.sales / p.spend).toFixed(2)) : 0;
-      p.cvr = p.clicks > 0 ? parseFloat(((p.orders / p.clicks) * 100).toFixed(2)) : 0;
-      p.cpc = p.clicks > 0 ? parseFloat((p.spend / p.clicks).toFixed(2)) : 0;
+      let status: string = '正常';
+      if (clk > 20 && orders === 0) status = '无转化';
+      else if (imp > 500 && clk < 5) status = '点击率偏低';
+      else if (clk > 0 && orders > 0 && (orders / clk) < 0.01) status = '转化率偏低';
+      else if (spend > 0 && sales > 0 && (sales / spend) < 2) status = 'ROAS偏低';
+      else if (spend > 50 && orders === 0) status = '成本异常';
 
-      if (p.clicks > 20 && p.orders === 0) p.status = '无转化';
-      else if (p.impressions > 500 && p.clicks < 5) p.status = '点击率偏低';
-      else if (p.clicks > 0 && p.orders > 0 && (p.orders / p.clicks) < 0.01) p.status = '转化率偏低';
-      else if (p.roas > 0 && p.roas < 2) p.status = 'ROAS偏低';
-      else if (p.spend > 50 && p.orders === 0) p.status = '成本异常';
-      else p.status = '正常';
-      return p;
+      return {
+        id: String(idx),
+        sku: `day-${item.date || idx}`,
+        name: `${item.date || '未知日期'} 广告表现`,
+        image: '',
+        campaign_name: '',
+        ad_group: '',
+        date: item.date || '',
+        status,
+        impressions: imp,
+        clicks: clk,
+        ctr: imp > 0 ? parseFloat(((clk / imp) * 100).toFixed(2)) : 0,
+        spend: parseFloat(spend.toFixed(2)),
+        orders,
+        sales: parseFloat(sales.toFixed(2)),
+        acos: sales > 0 ? parseFloat(((spend / sales) * 100).toFixed(2)) : 0,
+        roas: spend > 0 ? parseFloat((sales / spend).toFixed(2)) : 0,
+        cvr: clk > 0 ? parseFloat(((orders / clk) * 100).toFixed(2)) : 0,
+        cpc: clk > 0 ? parseFloat((spend / clk).toFixed(2)) : 0,
+      };
     });
 
     const burningSkus = products.filter((p: any) => p.status === '成本异常').length;
     const canAddBudget = products.filter((p: any) => p.roas > 5 && p.spend < 100).length;
     const highImpNoConv = products.filter((p: any) => p.status === '无转化' || p.status === '转化率偏低').length;
 
-    // 错误信息收集
     const errors: string[] = [];
-    if (shopDailyRes._error) errors.push(`日度表现: ${shopDailyRes._error}`);
-    if (campaignListRes._error) errors.push(`活动列表: ${campaignListRes._error}`);
+    if (dailyRes._error) errors.push(`日度表现: ${dailyRes._error}`);
     if (balanceRes._error) errors.push(`余额: ${balanceRes._error}`);
 
     const diagnosis = {
-      totalSkus: products.length || campaignIds.length,
+      totalSkus: records.length,
       burningSkus,
       canAddBudget,
       highImpNoConv,
@@ -243,7 +216,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       totalSales: summary.sales,
       suggestion: errors.length > 0
         ? `部分API调用失败: ${errors.join('; ')}`
-        : `共 ${products.length || campaignIds.length} 个广告活动，整体 ROAS ${summary.roas}，花费 $${summary.spend.toFixed(2)}，销售 $${summary.sales.toFixed(2)}。`,
+        : `共 ${records.length} 天数据，${totalOrders} 个订单，整体 ROAS ${summary.roas}，花费 $${summary.spend.toFixed(2)}，销售 $${summary.sales.toFixed(2)}。`,
     };
 
     res.status(200).json({ summary, daily, products, diagnosis });
