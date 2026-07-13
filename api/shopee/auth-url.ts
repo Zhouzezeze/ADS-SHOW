@@ -13,14 +13,15 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
     }
 
     const host = "https://open.shopee.cn";
-    const path = "/api/v2/shop/auth_partner";
+    const signPath = "/api/v2/shop/auth_partner";
+    const authPath = "/app/authorize";
     const timestamp = Math.floor(Date.now() / 1000);
     const redirectUrl = `https://${_req.headers.host}/shopee-callback`;
 
-    const baseString = `${partnerId}${path}${timestamp}`;
+    const baseString = `${partnerId}${signPath}${timestamp}`;
     const sign = crypto.createHmac('sha256', partnerKey).update(baseString).digest('hex');
 
-    const authUrl = `${host}${path}?partner_id=${partnerId}&timestamp=${timestamp}&sign=${sign}&redirect=${encodeURIComponent(redirectUrl)}`;
+    const authUrl = `${host}${authPath}?partner_id=${partnerId}&timestamp=${timestamp}&sign=${sign}&redirect=${encodeURIComponent(redirectUrl)}`;
 
     return res.status(200).json({ url: authUrl });
   } catch (error: any) {
