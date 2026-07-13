@@ -2,11 +2,21 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 import crypto from 'crypto';
 import axios from 'axios';
 
+// 生成签名
 function generateSign(partnerId: number, path: string, timestamp: number, accessToken: string, shopId: string, partnerKey: string): string {
   const baseString = `${partnerId}${path}${timestamp}${accessToken}${shopId}`;
   return crypto.createHmac('sha256', partnerKey).update(baseString).digest('hex');
 }
 
+// 格式化日期为 DD-MM-YYYY
+function formatDate(d: Date): string {
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${dd}-${mm}-${yyyy}`;
+}
+
+// 调用 Shopee API
 async function shopeeApiCall(path: string, partnerId: number, partnerKey: string, accessToken: string, shopId: string, extraParams: Record<string, any> = {}) {
   const host = "https://partner.shopeemobile.com";
   const timestamp = Math.floor(Date.now() / 1000);
@@ -22,6 +32,8 @@ async function shopeeApiCall(path: string, partnerId: number, partnerKey: string
     }
   });
 
+  console.log(`[Shopee API] Request URL: ${url.substring(0, 200)}...`);
+
   try {
     const response = await axios.get(url);
     console.log(`[Shopee API] ${path} response:`, JSON.stringify(response.data).substring(0, 500));
@@ -29,21 +41,6 @@ async function shopeeApiCall(path: string, partnerId: number, partnerKey: string
   } catch (error: any) {
     console.error(`[Shopee API Error] ${path}:`, error.response?.data || error.message);
     throw error;
-  }
-}
-
-// 新增：获取广告活动详情（包括商品信息）
-async function getCampaignDetails(campaignId: number, partnerId: number, partnerKey: string, accessToken: string, shopId: string) {
-  try {
-    const detailRes = await shopeeApiCall(
-      "/api/v2/ads/get_product_campaign_detail",
-      partnerId, partnerKey, accessToken, shopId,
-      { campaign_id: campaignId }
-    );
-    return detailRes.response || detailRes;
-  } catch (error: any) {
-    console.error(`[Shopee] Failed to get campaign detail for ${campaignId}:`, error.message);
-    return null;
   }
 }
 
@@ -59,8 +56,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const partnerKey = process.env.VITE_SHOPEE_PARTNER_KEY || '';
 
   try {
-    // Step 1: 获取所有广告活动 ID
-    // 注意：Shopee 广告 API 需要先获取 campaign_id_list，然后才能获取性能数据
+    // Step 1: 获取广告活动列表
+    console.log('[Shopee] Step 1: Getting campaign list...');
     const campaignRes = await shopeeApiCall(
       "/api/v2/ads/get_campaign_id_list",
       partnerId, partnerKey, access_token as string, shop_id as string,
@@ -68,10 +65,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     );
 
     const campaignIdList = campaignRes.response?.campaign_id_list || [];
-    const campaignIds = campaignIdList.join(',');
-    console.log('[Shopee] Campaign IDs:', campaignIds);
+    console.log('[Shopee] Campaign IDs:', campaignIdList);
 
-    if (!campaignIds) {
+    if (!campaignIdList.length) {
       return res.status(200).json({
         summary: { impressions: 0, clicks: 0, ctr: 0, spend: 0, orders: 0, sales: 0, acos: 0, roas: 0, cvr: 0, cpc: 0, issueLinks: 0 },
         daily: [],
@@ -81,22 +77,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Step 2: 获取过去7天的日度表现数据
+    console.log('[Shopee] Step 2: Getting performance data...');
     const today = new Date();
     const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const formatDate = (d: Date) => {
-      const dd = String(d.getDate()).padStart(2, '0');
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      const yyyy = d.getFullYear();
-      return `${dd}-${mm}-${yyyy}`; // Shopee 要求 DD-MM-YYYY 格式
-    };
-
+    
     const perfRes = await shopeeApiCall(
       "/api/v2/ads/get_product_campaign_daily_performance",
       partnerId, partnerKey, access_token as string, shop_id as string,
       {
         start_date: formatDate(weekAgo),
         end_date: formatDate(today),
-        campaign_id_list: campaignIds,
+        campaign_id_list: campaignIdList.join(','),
       }
     );
 
@@ -108,7 +99,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Step 3: 聚合数据
-    // 官方文档字段名：impression, clicks, expense, broad_gmv, broad_order, broad_roi, broad_cir
     let totalImpressions = 0, totalClicks = 0, totalSpend = 0, totalOrders = 0, totalSales = 0;
     const dailyMap: Record<string, any> = {};
 
