@@ -19,7 +19,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: 'Server not configured' });
     }
 
-    const host = "https://openplatform.shopee.cn";
+    const host = "https://partner.shopeemobile.com";
     const path = "/api/v2/auth/access_token/refresh";
     const timestamp = Math.floor(Date.now() / 1000);
     const baseString = `${partnerId}${path}${timestamp}`;

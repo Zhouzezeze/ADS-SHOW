@@ -23,7 +23,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    const host = "https://open.shopee.cn";
+    const host = "https://partner.shopeemobile.com";
     const path = "/api/v2/auth/token/get";
     const timestamp = Math.floor(Date.now() / 1000);
     const baseString = `${partnerId}${path}${timestamp}`;

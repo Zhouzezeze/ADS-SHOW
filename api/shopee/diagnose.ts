@@ -20,7 +20,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: 'Server not configured' });
     }
 
-    const host = "https://openplatform.shopee.cn";
+    const host = "https://partner.shopeemobile.com";
     
     // 测试1: 验证 token 是否有效 (get_shop_info)
     const testPath1 = "/api/v2/shop/get_shop_info";

@@ -24,7 +24,7 @@ async function shopeeApiCall(
   shopId: string,
   extraParams: Record<string, string> = {}
 ) {
-  const host = "https://open.shopee.cn";
+  const host = "https://partner.shopeemobile.com";
   const timestamp = Math.floor(Date.now() / 1000);
   const sign = generateSign(partnerId, path, timestamp, accessToken, shopId, partnerKey);
 

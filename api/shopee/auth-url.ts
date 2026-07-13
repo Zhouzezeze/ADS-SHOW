@@ -12,16 +12,15 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
       return res.status(500).json({ error: 'Server not configured: missing partner_id or partner_key' });
     }
 
-    const host = "https://open.shopee.cn";
-    const signPath = "/api/v2/shop/auth_partner";
-    const authPath = "/app/authorize";
+    const host = "https://partner.shopeemobile.com";
+    const path = "/api/v2/shop/auth_partner";
     const timestamp = Math.floor(Date.now() / 1000);
     const redirectUrl = `https://${_req.headers.host}/shopee-callback`;
 
-    const baseString = `${partnerId}${signPath}${timestamp}`;
+    const baseString = `${partnerId}${path}${timestamp}`;
     const sign = crypto.createHmac('sha256', partnerKey).update(baseString).digest('hex');
 
-    const authUrl = `${host}${authPath}?partner_id=${partnerId}&timestamp=${timestamp}&sign=${sign}&redirect=${encodeURIComponent(redirectUrl)}`;
+    const authUrl = `${host}${path}?partner_id=${partnerId}&timestamp=${timestamp}&sign=${sign}&redirect=${encodeURIComponent(redirectUrl)}`;
 
     return res.status(200).json({ url: authUrl });
   } catch (error: any) {
