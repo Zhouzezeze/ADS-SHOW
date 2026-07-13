@@ -41,8 +41,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       };
     }
 
-    // 测试2: 尝试获取广告活动列表 (get_product_level_campaign_id_list)
-    const testPath2 = "/api/v2/ads/get_product_level_campaign_id_list";
+    // 测试2: 尝试获取广告活动列表 (get_campaign_id_list)
+    const testPath2 = "/api/v2/ads/get_campaign_id_list";
     const timestamp2 = Math.floor(Date.now() / 1000);
     const baseString2 = `${partnerId}${testPath2}${timestamp2}${access_token}${shop_id}`;
     const sign2 = crypto.createHmac('sha256', partnerKey).update(baseString2).digest('hex');
@@ -56,7 +56,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       campaignResult = { 
         success: false, 
         data: null, 
-        error: err.response?.data || err.message 
+        error: {
+          message: err.message,
+          status: err.response?.status,
+          data: err.response?.data,
+          headers: err.response?.headers
+        }
       };
     }
 
