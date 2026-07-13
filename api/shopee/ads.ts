@@ -2,13 +2,11 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 import crypto from 'crypto';
 import axios from 'axios';
 
-// Shopee API v2 签名: partner_id + api_path + timestamp + access_token + shop_id
 function generateSign(partnerId: number, path: string, timestamp: number, accessToken: string, shopId: string, partnerKey: string): string {
   const baseString = `${partnerId}${path}${timestamp}${accessToken}${shopId}`;
   return crypto.createHmac('sha256', partnerKey).update(baseString).digest('hex');
 }
 
-// 日期格式 DD-MM-YYYY (Shopee 官方要求)
 function formatDate(d: Date): string {
   const dd = String(d.getDate()).padStart(2, '0');
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -42,20 +40,13 @@ async function shopeeApiCall(
     .join('&');
   const url = `${host}${path}?${qs}`;
 
-  console.log(`[Shopee API] Calling ${path}`);
-  console.log(`[Shopee API] Host: ${host}`);
-  
   const response = await axios.get(url, { validateStatus: () => true });
   const body = response.data;
-  const status = response.status;
-  
-  console.log(`[Shopee API] ${path} HTTP status: ${status}`);
-  console.log(`[Shopee API] ${path} response:`, JSON.stringify(body).substring(0, 1000));
-  
+
   if (body.error && body.error !== '') {
-    const errMsg = `Shopee API ${path}: error=${body.error}, message=${body.message || ''}, status=${status}`;
-    console.error(`[Shopee API Error] ${errMsg}`);
-    throw new Error(errMsg);
+    const errMsg = `API ${path} failed: ${body.error} (${body.message || ''})`;
+    console.error('[ads]', errMsg);
+    return { _error: errMsg, _raw: body };
   }
   return body;
 }
@@ -70,11 +61,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const partnerId = parseInt(process.env.VITE_SHOPEE_PARTNER_ID || '0');
   const partnerKey = process.env.VITE_SHOPEE_PARTNER_KEY || '';
-
-  if (!partnerId || !partnerKey) {
-    return res.status(500).json({ error: 'Server not configured' });
-  }
-
   const accessToken = access_token as string;
   const shopId = shop_id as string;
 
@@ -84,60 +70,53 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const startDate = formatDate(weekAgo);
     const endDate = formatDate(today);
 
-    // 并行: 店铺级日度表现 + 广告余额 + 广告活动ID列表
-    const [shopDailyRes, balanceRes, campaignListRes] = await Promise.allSettled([
-      shopeeApiCall(
-        "/api/v2/ads/get_all_cpc_ads_daily_performance",
-        partnerId, partnerKey, accessToken, shopId,
-        { start_date: startDate, end_date: endDate }
-      ),
-      shopeeApiCall(
-        "/api/v2/ads/get_total_balance",
-        partnerId, partnerKey, accessToken, shopId
-      ),
-      shopeeApiCall(
-        "/api/v2/ads/get_product_level_campaign_id_list",
-        partnerId, partnerKey, accessToken, shopId,
-        { offset: '0', limit: '100' }
-      ),
+    // 并行请求所有数据 (使用与 check-permissions.ts 完全相同的方式)
+    const [balanceRes, shopDailyRes, campaignListRes] = await Promise.all([
+      shopeeApiCall("/api/v2/ads/get_total_balance", partnerId, partnerKey, accessToken, shopId),
+      shopeeApiCall("/api/v2/ads/get_all_cpc_ads_daily_performance", partnerId, partnerKey, accessToken, shopId, {
+        start_date: startDate,
+        end_date: endDate,
+      }),
+      shopeeApiCall("/api/v2/ads/get_product_level_campaign_id_list", partnerId, partnerKey, accessToken, shopId, {
+        offset: '0',
+        limit: '100',
+      }),
     ]);
 
-    // 1. 店铺日度表现
-    let shopDaily: any[] = [];
-    if (shopDailyRes.status === 'fulfilled') {
-      shopDaily = Array.isArray(shopDailyRes.value.response) ? shopDailyRes.value.response : [];
-    }
-
-    // 2. 余额
+    // 余额
     let totalBalance = 0;
-    if (balanceRes.status === 'fulfilled') {
-      totalBalance = balanceRes.value.response?.total_balance || 0;
+    if (!balanceRes._error) {
+      totalBalance = balanceRes.response?.total_balance || 0;
     }
 
-    // 3. 广告活动 ID 列表
+    // 店铺日度表现
+    let shopDaily: any[] = [];
+    if (!shopDailyRes._error) {
+      shopDaily = Array.isArray(shopDailyRes.response) ? shopDailyRes.response : [];
+    }
+
+    // 广告活动 ID 列表
     let campaignIds: number[] = [];
-    if (campaignListRes.status === 'fulfilled') {
-      campaignIds = campaignListRes.value.response?.campaign_id_list || [];
+    if (!campaignListRes._error) {
+      campaignIds = campaignListRes.response?.campaign_id_list || [];
     }
 
-    // 4. 获取商品级日度表现 (如果有 campaign IDs)
+    // 获取商品级日度表现
     let productPerfData: any[] = [];
     if (campaignIds.length > 0) {
-      try {
-        const productPerfRes = await shopeeApiCall(
-          "/api/v2/ads/get_product_campaign_daily_performance",
-          partnerId, partnerKey, accessToken, shopId,
-          {
-            start_date: startDate,
-            end_date: endDate,
-            campaign_id_list: campaignIds.join(','),
-          }
-        );
+      const productPerfRes = await shopeeApiCall(
+        "/api/v2/ads/get_product_campaign_daily_performance",
+        partnerId, partnerKey, accessToken, shopId,
+        {
+          start_date: startDate,
+          end_date: endDate,
+          campaign_id_list: campaignIds.join(','),
+        }
+      );
+      if (!productPerfRes._error) {
         productPerfData = Array.isArray(productPerfRes.response?.metrics_list)
           ? productPerfRes.response.metrics_list
           : (Array.isArray(productPerfRes.response) ? productPerfRes.response : []);
-      } catch (e: any) {
-        console.error('[Shopee] product performance error:', e.message);
       }
     }
 
@@ -248,6 +227,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const canAddBudget = products.filter((p: any) => p.roas > 5 && p.spend < 100).length;
     const highImpNoConv = products.filter((p: any) => p.status === '无转化' || p.status === '转化率偏低').length;
 
+    // 错误信息收集
+    const errors: string[] = [];
+    if (shopDailyRes._error) errors.push(`日度表现: ${shopDailyRes._error}`);
+    if (campaignListRes._error) errors.push(`活动列表: ${campaignListRes._error}`);
+    if (balanceRes._error) errors.push(`余额: ${balanceRes._error}`);
+
     const diagnosis = {
       totalSkus: products.length || campaignIds.length,
       burningSkus,
@@ -256,12 +241,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       overallRoas: summary.roas,
       totalSpend: summary.spend,
       totalSales: summary.sales,
-      suggestion: `共 ${products.length || campaignIds.length} 个广告活动，整体 ROAS ${summary.roas}，花费 $${summary.spend.toFixed(2)}，销售 $${summary.sales.toFixed(2)}。${burningSkus > 0 ? ` ${burningSkus} 个商品成本异常需关注。` : ''}${highImpNoConv > 0 ? ` ${highImpNoConv} 个商品高曝光无转化。` : ''}`,
+      suggestion: errors.length > 0
+        ? `部分API调用失败: ${errors.join('; ')}`
+        : `共 ${products.length || campaignIds.length} 个广告活动，整体 ROAS ${summary.roas}，花费 $${summary.spend.toFixed(2)}，销售 $${summary.sales.toFixed(2)}。`,
     };
 
     res.status(200).json({ summary, daily, products, diagnosis });
   } catch (error: any) {
-    console.error('[Shopee] Ads fetch error:', error.message);
+    console.error('[ads] Unexpected error:', error.message);
     res.status(500).json({ error: error.message });
   }
 }
