@@ -2,6 +2,49 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 import crypto from 'crypto';
 import axios from 'axios';
 
+function generateSign(partnerId: number, path: string, timestamp: number, accessToken: string, shopId: string, partnerKey: string): string {
+  const baseString = `${partnerId}${path}${timestamp}${accessToken}${shopId}`;
+  return crypto.createHmac('sha256', partnerKey).update(baseString).digest('hex');
+}
+
+async function shopeeApiCall(
+  path: string,
+  partnerId: number,
+  partnerKey: string,
+  accessToken: string,
+  shopId: string,
+  extraParams: Record<string, string> = {}
+) {
+  const host = "https://openplatform.shopee.cn";
+  const timestamp = Math.floor(Date.now() / 1000);
+  const sign = generateSign(partnerId, path, timestamp, accessToken, shopId, partnerKey);
+
+  const allParams: Record<string, string> = {
+    partner_id: String(partnerId),
+    timestamp: String(timestamp),
+    sign,
+    access_token: accessToken,
+    shop_id: shopId,
+    ...extraParams,
+  };
+
+  const qs = Object.entries(allParams)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join('&');
+  const url = `${host}${path}?${qs}`;
+
+  try {
+    const response = await axios.get(url, { validateStatus: () => true });
+    const body = response.data;
+    if (body.error && body.error !== '') {
+      return { success: false, error: `${body.error}: ${body.message || ''}`, url: url.substring(0, 300) };
+    }
+    return { success: true, data: body, url: url.substring(0, 300) };
+  } catch (err: any) {
+    return { success: false, error: err.message, url: url.substring(0, 300) };
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Content-Type', 'application/json');
@@ -20,56 +63,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: 'Server not configured' });
     }
 
-    const host = "https://partner.shopeemobile.com";
-    
-    // 测试1: 验证 token 是否有效 (get_shop_info)
-    const testPath1 = "/api/v2/shop/get_shop_info";
-    const timestamp1 = Math.floor(Date.now() / 1000);
-    const baseString1 = `${partnerId}${testPath1}${timestamp1}${access_token}${shop_id}`;
-    const sign1 = crypto.createHmac('sha256', partnerKey).update(baseString1).digest('hex');
-    const url1 = `${host}${testPath1}?partner_id=${partnerId}&timestamp=${timestamp1}&sign=${sign1}&access_token=${access_token}&shop_id=${shop_id}`;
-
-    let shopInfoResult = { success: false, data: null, error: null };
-    try {
-      const response = await axios.get(url1);
-      shopInfoResult = { success: true, data: response.data, error: null };
-    } catch (err: any) {
-      shopInfoResult = { 
-        success: false, 
-        data: null, 
-        error: err.response?.data || err.message 
-      };
-    }
-
-    // 测试2: 尝试获取广告活动列表 (get_campaign_id_list)
-    const testPath2 = "/api/v2/ads/get_campaign_id_list";
-    const timestamp2 = Math.floor(Date.now() / 1000);
-    const baseString2 = `${partnerId}${testPath2}${timestamp2}${access_token}${shop_id}`;
-    const sign2 = crypto.createHmac('sha256', partnerKey).update(baseString2).digest('hex');
-    const url2 = `${host}${testPath2}?partner_id=${partnerId}&timestamp=${timestamp2}&sign=${sign2}&access_token=${access_token}&shop_id=${shop_id}&ad_type=all&offset=0&limit=10`;
-
-    let campaignResult = { success: false, data: null, error: null };
-    try {
-      const response = await axios.get(url2);
-      campaignResult = { success: true, data: response.data, error: null };
-    } catch (err: any) {
-      campaignResult = { 
-        success: false, 
-        data: null, 
-        error: {
-          message: err.message,
-          status: err.response?.status,
-          data: err.response?.data,
-          headers: err.response?.headers
-        }
-      };
-    }
-
-    // 测试3: 尝试获取店铺广告实时数据 (get_all_cpc_ads_daily_performance)
-    const testPath3 = "/api/v2/ads/get_all_cpc_ads_daily_performance";
-    const timestamp3 = Math.floor(Date.now() / 1000);
-    const baseString3 = `${partnerId}${testPath3}${timestamp3}${access_token}${shop_id}`;
-    const sign3 = crypto.createHmac('sha256', partnerKey).update(baseString3).digest('hex');
+    const accessToken = access_token as string;
+    const shopId = shop_id as string;
     const today = new Date();
     const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
     const formatDate = (d: Date) => {
@@ -78,44 +73,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const yyyy = d.getFullYear();
       return `${dd}-${mm}-${yyyy}`;
     };
-    const url3 = `${host}${testPath3}?partner_id=${partnerId}&timestamp=${timestamp3}&sign=${sign3}&access_token=${access_token}&shop_id=${shop_id}&start_date=${formatDate(weekAgo)}&end_date=${formatDate(today)}`;
 
-    let productAdsResult = { success: false, data: null, error: null };
-    try {
-      const response = await axios.get(url3);
-      productAdsResult = { success: true, data: response.data, error: null };
-    } catch (err: any) {
-      productAdsResult = { 
-        success: false, 
-        data: null, 
-        error: err.response?.data || err.message 
-      };
-    }
+    // 并行测试所有 API
+    const [shopInfo, balance, campaignList, dailyPerf] = await Promise.all([
+      shopeeApiCall("/api/v2/shop/get_shop_info", partnerId, partnerKey, accessToken, shopId),
+      shopeeApiCall("/api/v2/ads/get_total_balance", partnerId, partnerKey, accessToken, shopId),
+      shopeeApiCall("/api/v2/ads/get_product_level_campaign_id_list", partnerId, partnerKey, accessToken, shopId, { offset: '0', limit: '10' }),
+      shopeeApiCall("/api/v2/ads/get_all_cpc_ads_daily_performance", partnerId, partnerKey, accessToken, shopId, { start_date: formatDate(weekAgo), end_date: formatDate(today) }),
+    ]);
 
-    // 返回诊断结果
     return res.status(200).json({
       diagnostics: {
         partner_id: partnerId,
-        shop_id: shop_id,
-        access_token_length: (access_token as string).length,
-        timestamp_now: Math.floor(Date.now() / 1000),
+        shop_id: shopId,
+        access_token_length: accessToken.length,
+        api_host: "https://openplatform.shopee.cn",
       },
       tests: {
-        shop_info: shopInfoResult,
-        campaign_list: campaignResult,
-        product_ads: productAdsResult,
+        shop_info: { success: shopInfo.success, detail: shopInfo.success ? 'Token 有效' : shopInfo.error },
+        balance: { success: balance.success, detail: balance.success ? `余额: ${balance.data?.response?.total_balance || 'N/A'}` : balance.error },
+        campaign_list: { success: campaignList.success, detail: campaignList.success ? `活动数: ${(campaignList.data?.response?.campaign_id_list || []).length}` : campaignList.error },
+        daily_performance: { success: dailyPerf.success, detail: dailyPerf.success ? `日度数据: ${(dailyPerf.data?.response || []).length} 条` : dailyPerf.error },
       },
-      suggestions: [
-        shopInfoResult.success ? "✅ Token 有效" : "❌ Token 无效，请重新授权",
-        campaignResult.success ? "✅ 广告 API 访问正常" : "❌ 广告 API 访问被拒绝，可能需要特殊权限",
-        productAdsResult.success ? "✅ 商品广告 API 访问正常" : "❌ 商品广告 API 访问被拒绝",
+      summary: [
+        shopInfo.success ? "✅ Token 有效" : "❌ Token 无效，请重新授权",
+        balance.success ? "✅ 广告余额获取成功" : "❌ 广告余额获取失败",
+        campaignList.success ? "✅ 广告活动列表获取成功" : "❌ 广告活动列表获取失败",
+        dailyPerf.success ? "✅ 日度表现数据获取成功" : "❌ 日度表现数据获取失败",
       ]
     });
 
   } catch (error: any) {
     return res.status(500).json({
       error: error.message || 'Internal server error',
-      detail: error.response?.data || null
     });
   }
 }
