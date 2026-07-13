@@ -51,7 +51,7 @@ async function shopeeApiCall(
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  const { shop_id, access_token } = req.query;
+  const { shop_id, access_token, start_date, end_date } = req.query;
 
   if (!shop_id || !access_token) {
     return res.status(400).json({ error: 'Missing shop_id or access_token' });
@@ -64,9 +64,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const today = new Date();
-    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const startDate = formatDate(weekAgo);
-    const endDate = formatDate(today);
+    let startDate: string;
+    let endDate: string;
+
+    if (start_date && end_date && typeof start_date === 'string' && typeof end_date === 'string') {
+      startDate = start_date;
+      endDate = end_date;
+    } else {
+      const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+      startDate = formatDate(weekAgo);
+      endDate = formatDate(today);
+    }
 
     // 并行请求: 店铺日度表现 + 余额
     const [dailyRes, balanceRes] = await Promise.all([
@@ -216,7 +224,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       totalSales: summary.sales,
       suggestion: errors.length > 0
         ? `部分API调用失败: ${errors.join('; ')}`
-        : `共 ${records.length} 天数据，${totalOrders} 个订单，整体 ROAS ${summary.roas}，花费 $${summary.spend.toFixed(2)}，销售 $${summary.sales.toFixed(2)}。`,
+        : `共 ${records.length} 天数据，${totalOrders} 个订单，整体 ROAS ${summary.roas}，花费 ฿${summary.spend.toFixed(2)}，销售 ฿${summary.sales.toFixed(2)}。`,
     };
 
     res.status(200).json({ summary, daily, products, diagnosis });

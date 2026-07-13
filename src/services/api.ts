@@ -52,12 +52,12 @@ async function getValidAccessToken(): Promise<{ token: string; shopId: string } 
   return null;
 }
 
-export const fetchAdData = async (platform: Platform): Promise<FetchResult> => {
+export const fetchAdData = async (platform: Platform, startDate?: string, endDate?: string): Promise<FetchResult> => {
   console.log(`[Dashboard] Fetching data for: ${platform}`);
 
   if (platform === 'total') {
-    const shopee = await fetchAdData('shopee');
-    const amazon = await fetchAdData('amazon');
+    const shopee = await fetchAdData('shopee', startDate, endDate);
+    const amazon = await fetchAdData('amazon', startDate, endDate);
 
     const totalSummary = {
       impressions: shopee.data.summary.impressions + amazon.data.summary.impressions,
@@ -120,8 +120,11 @@ export const fetchAdData = async (platform: Platform): Promise<FetchResult> => {
     if (auth) {
       console.log(`[Shopee] Using shopId: ${auth.shopId}`);
       try {
-        // 关键修复：用 query 参数传 access_token，不用 header
-        const response = await fetch(`/api/shopee/ads?shop_id=${auth.shopId}&access_token=${auth.token}`);
+        let adsUrl = `/api/shopee/ads?shop_id=${auth.shopId}&access_token=${auth.token}`;
+        if (startDate && endDate) {
+          adsUrl += `&start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`;
+        }
+        const response = await fetch(adsUrl);
         const data = await response.json();
         console.log('[Shopee] API Response status:', response.status);
 

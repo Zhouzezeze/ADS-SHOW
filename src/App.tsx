@@ -27,8 +27,55 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [dateRange, setDateRange] = useState('最近30天');
+  const [queryTrigger, setQueryTrigger] = useState(0);
 
-  const { data, loading, error, isRealData, dataSource } = useAdData(currentPlatform);
+  const toInputDate = (d: Date) => {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  const toShopeeDate = (input: string) => {
+    const [yyyy, mm, dd] = input.split('-');
+    return `${dd}-${mm}-${yyyy}`;
+  };
+
+  const getDateRange = () => {
+    const today = new Date();
+    switch (dateRange) {
+      case '今天':
+        return { start: toInputDate(today), end: toInputDate(today) };
+      case '昨天': {
+        const y = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+        return { start: toInputDate(y), end: toInputDate(y) };
+      }
+      case '最近7天': {
+        const w = new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000);
+        return { start: toInputDate(w), end: toInputDate(today) };
+      }
+      case '最近30天': {
+        const m = new Date(today.getTime() - 29 * 24 * 60 * 60 * 1000);
+        return { start: toInputDate(m), end: toInputDate(today) };
+      }
+      case '自定义':
+        return { start: customStartDate, end: customEndDate };
+      default: {
+        const def = new Date(today.getTime() - 29 * 24 * 60 * 60 * 1000);
+        return { start: toInputDate(def), end: toInputDate(today) };
+      }
+    }
+  };
+
+  const today30 = new Date(new Date().getTime() - 29 * 24 * 60 * 60 * 1000);
+  const [customStartDate, setCustomStartDate] = useState(toInputDate(today30));
+  const [customEndDate, setCustomEndDate] = useState(toInputDate(new Date()));
+
+  const { start: queryStart, end: queryEnd } = getDateRange();
+  const apiStartDate = queryStart ? toShopeeDate(queryStart) : undefined;
+  const apiEndDate = queryEnd ? toShopeeDate(queryEnd) : undefined;
+
+  const { data, loading, error, isRealData, dataSource } = useAdData(currentPlatform, apiStartDate, apiEndDate, queryTrigger);
 
   const filteredProducts = useMemo(() => {
     if (!data) return [];
@@ -89,8 +136,8 @@ const App: React.FC = () => {
 
         {/* Top Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          <StatCard title="广告花费" value={data.summary.spend.toFixed(2)} change={4.2} prefix="$" />
-          <StatCard title="广告销售额" value={data.summary.sales.toFixed(2)} change={12.5} prefix="$" />
+          <StatCard title="广告花费" value={data.summary.spend.toFixed(2)} change={4.2} prefix="฿" />
+          <StatCard title="广告销售额" value={data.summary.sales.toFixed(2)} change={12.5} prefix="฿" />
           <StatCard title="ROAS" value={data.summary.roas.toFixed(2)} change={8.1} />
           <StatCard title="点击率 (CTR)" value={data.summary.ctr.toFixed(2)} change={-1.4} suffix="%" />
           <StatCard title="转化率 (CVR)" value={data.summary.cvr.toFixed(2)} change={2.8} suffix="%" />
@@ -129,10 +176,18 @@ const App: React.FC = () => {
             onSearchChange={setSearchQuery}
             dateRange={dateRange}
             onDateRangeChange={setDateRange}
+            customStartDate={customStartDate}
+            customEndDate={customEndDate}
+            onCustomStartDateChange={setCustomStartDate}
+            onCustomEndDateChange={setCustomEndDate}
+            onQuery={() => setQueryTrigger((t) => t + 1)}
             onReset={() => {
               setSearchQuery('');
               setSelectedStatus('all');
               setDateRange('最近30天');
+              const d30 = new Date(new Date().getTime() - 29 * 24 * 60 * 60 * 1000);
+              setCustomStartDate(toInputDate(d30));
+              setCustomEndDate(toInputDate(new Date()));
             }}
           />
           <ProductTable products={filteredProducts} />

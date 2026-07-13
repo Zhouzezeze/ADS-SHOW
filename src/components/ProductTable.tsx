@@ -94,9 +94,9 @@ const ProductTable: React.FC<ProductTableProps> = ({ products }) => {
                 <td className="px-6 py-4 text-sm text-gray-700">{p.ctr.toFixed(2)}%</td>
                 <td className="px-6 py-4 text-sm text-gray-700 font-medium">{p.orders}</td>
                 <td className="px-6 py-4 text-sm text-gray-700">{p.cvr.toFixed(2)}%</td>
-                <td className="px-6 py-4 text-sm text-gray-900 font-bold">${p.sales.toFixed(2)}</td>
-                <td className="px-6 py-4 text-sm text-red-600 font-medium">${p.spend.toFixed(2)}</td>
-                <td className="px-6 py-4 text-sm text-gray-700">${p.cpc.toFixed(2)}</td>
+                <td className="px-6 py-4 text-sm text-gray-900 font-bold">฿{p.sales.toFixed(2)}</td>
+                <td className="px-6 py-4 text-sm text-red-600 font-medium">฿{p.spend.toFixed(2)}</td>
+                <td className="px-6 py-4 text-sm text-gray-700">฿{p.cpc.toFixed(2)}</td>
                 <td className="px-6 py-4 text-sm text-blue-700 font-black">{p.roas.toFixed(2)}</td>
               </tr>
             ))}
