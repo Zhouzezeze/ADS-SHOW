@@ -7,7 +7,8 @@ function generateSign(partnerId: number, path: string, timestamp: number, access
   return crypto.createHmac('sha256', partnerKey).update(baseString).digest('hex');
 }
 
-async function shopeeApiCall(
+async function testApi(
+  host: string,
   path: string,
   partnerId: number,
   partnerKey: string,
@@ -15,7 +16,6 @@ async function shopeeApiCall(
   shopId: string,
   extraParams: Record<string, string> = {}
 ) {
-  const host = "https://open.shopee.cn";
   const timestamp = Math.floor(Date.now() / 1000);
   const sign = generateSign(partnerId, path, timestamp, accessToken, shopId, partnerKey);
 
@@ -34,34 +34,24 @@ async function shopeeApiCall(
   const url = `${host}${path}?${qs}`;
 
   try {
-    const response = await axios.get(url, { validateStatus: () => true });
+    const response = await axios.get(url, { validateStatus: () => true, timeout: 10000 });
     const body = response.data;
-    const status = response.status;
-    const fullResponse = JSON.stringify(body);
-    
-    console.log(`[Diagnose] ${path} HTTP ${status}: ${fullResponse.substring(0, 500)}`);
-    
-    if (body.error && body.error !== '') {
-      return { 
-        success: false, 
-        error: `${body.error}: ${body.message || ''}`, 
-        http_status: status,
-        full_response: fullResponse.substring(0, 500),
-        url: url.substring(0, 300) 
-      };
-    }
-    return { 
-      success: true, 
-      data: body, 
-      http_status: status,
-      url: url.substring(0, 300) 
+    return {
+      host,
+      path,
+      http_status: response.status,
+      success: !body.error || body.error === '',
+      response_body: JSON.stringify(body).substring(0, 500),
+      url: url.substring(0, 300),
     };
   } catch (err: any) {
-    return { 
-      success: false, 
-      error: err.message, 
-      error_response: err.response?.data,
-      url: url.substring(0, 300) 
+    return {
+      host,
+      path,
+      http_status: 0,
+      success: false,
+      error: err.message,
+      url: url.substring(0, 300),
     };
   }
 }
@@ -79,55 +69,63 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const partnerId = parseInt(process.env.VITE_SHOPEE_PARTNER_ID || '0');
     const partnerKey = process.env.VITE_SHOPEE_PARTNER_KEY || '';
-
-    if (!partnerId || !partnerKey) {
-      return res.status(500).json({ error: 'Server not configured' });
-    }
-
     const accessToken = access_token as string;
     const shopId = shop_id as string;
-    const today = new Date();
-    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const formatDate = (d: Date) => {
-      const dd = String(d.getDate()).padStart(2, '0');
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      const yyyy = d.getFullYear();
-      return `${dd}-${mm}-${yyyy}`;
-    };
 
-    // 并行测试所有 API
-    const [shopInfo, balance, campaignList, dailyPerf] = await Promise.all([
-      shopeeApiCall("/api/v2/shop/get_shop_info", partnerId, partnerKey, accessToken, shopId),
-      shopeeApiCall("/api/v2/ads/get_total_balance", partnerId, partnerKey, accessToken, shopId),
-      shopeeApiCall("/api/v2/ads/get_product_level_campaign_id_list", partnerId, partnerKey, accessToken, shopId, { offset: '0', limit: '10' }),
-      shopeeApiCall("/api/v2/ads/get_all_cpc_ads_daily_performance", partnerId, partnerKey, accessToken, shopId, { start_date: formatDate(weekAgo), end_date: formatDate(today) }),
+    // 测试所有可能的域名组合
+    const hosts = [
+      "https://partner.shopeemobile.com",
+      "https://open.shopee.cn",
+      "https://openplatform.shopee.cn",
+    ];
+
+    const adsPath = "/api/v2/ads/get_total_balance";
+    const shopPath = "/api/v2/shop/get_shop_info";
+
+    // 并行测试所有组合
+    const results = await Promise.all([
+      // shop_info 在三个域名上
+      testApi(hosts[0], shopPath, partnerId, partnerKey, accessToken, shopId),
+      testApi(hosts[1], shopPath, partnerId, partnerKey, accessToken, shopId),
+      testApi(hosts[2], shopPath, partnerId, partnerKey, accessToken, shopId),
+      // ads balance 在三个域名上
+      testApi(hosts[0], adsPath, partnerId, partnerKey, accessToken, shopId),
+      testApi(hosts[1], adsPath, partnerId, partnerKey, accessToken, shopId),
+      testApi(hosts[2], adsPath, partnerId, partnerKey, accessToken, shopId),
     ]);
 
     return res.status(200).json({
       diagnostics: {
         partner_id: partnerId,
         shop_id: shopId,
-        access_token_length: accessToken.length,
-        api_host: "https://openplatform.shopee.cn",
+        token_length: accessToken.length,
       },
-      tests: {
-        shop_info: { success: shopInfo.success, detail: shopInfo.success ? 'Token 有效' : shopInfo.error },
-        balance: { success: balance.success, detail: balance.success ? `余额: ${balance.data?.response?.total_balance || 'N/A'}` : balance.error },
-        campaign_list: { success: campaignList.success, detail: campaignList.success ? `活动数: ${(campaignList.data?.response?.campaign_id_list || []).length}` : campaignList.error },
-        daily_performance: { success: dailyPerf.success, detail: dailyPerf.success ? `日度数据: ${(dailyPerf.data?.response || []).length} 条` : dailyPerf.error },
-      },
-      summary: [
-        shopInfo.success ? "✅ Token 有效" : "❌ Token 无效，请重新授权",
-        balance.success ? "✅ 广告余额获取成功" : "❌ 广告余额获取失败",
-        campaignList.success ? "✅ 广告活动列表获取成功" : "❌ 广告活动列表获取失败",
-        dailyPerf.success ? "✅ 日度表现数据获取成功" : "❌ 日度表现数据获取失败",
-      ]
+      results: results.map(r => ({
+        host: r.host,
+        path: r.path,
+        http_status: r.http_status,
+        success: r.success,
+        response: r.response_body || r.error,
+      })),
+      conclusion: (() => {
+        // 找出哪个域名对 ads API 有效
+        const adsResults = results.filter(r => r.path === adsPath);
+        const workingAds = adsResults.filter(r => r.success);
+        if (workingAds.length > 0) {
+          return `✅ 找到可用的广告 API 域名: ${workingAds[0].host}`;
+        }
+        // 看哪个域名对 shop_info 有效
+        const shopResults = results.filter(r => r.path === shopPath);
+        const workingShop = shopResults.filter(r => r.success);
+        if (workingShop.length > 0) {
+          return `⚠️ Token 有效(${workingShop[0].host})，但所有域名的广告 API 都失败。可能需要检查 API 权限或路径。`;
+        }
+        return `❌ 所有域名都失败，token 可能已过期。`;
+      })()
     });
 
   } catch (error: any) {
-    return res.status(500).json({
-      error: error.message || 'Internal server error',
-    });
+    return res.status(500).json({ error: error.message });
   }
 }
 
