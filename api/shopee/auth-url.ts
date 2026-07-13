@@ -12,7 +12,7 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
       return res.status(500).json({ error: 'Server not configured: missing partner_id or partner_key' });
     }
 
-    const host = "https://openplatform.shopee.cn";
+    const host = "https://open.shopee.cn";
     const path = "/api/v2/shop/auth_partner";
     const timestamp = Math.floor(Date.now() / 1000);
     const redirectUrl = `https://${_req.headers.host}/shopee-callback`;
