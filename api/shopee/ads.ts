@@ -7,14 +7,23 @@ function generateSign(partnerId: number, path: string, timestamp: number, access
   return crypto.createHmac('sha256', partnerKey).update(baseString).digest('hex');
 }
 
-async function shopeeApiCall(path: string, partnerId: number, partnerKey: string, accessToken: string, shopId: string, params: Record<string, any> = {}) {
+async function shopeeApiCall(path: string, partnerId: number, partnerKey: string, accessToken: string, shopId: string, extraParams: Record<string, any> = {}) {
   const host = "https://partner.shopeemobile.com";
   const timestamp = Math.floor(Date.now() / 1000);
   const sign = generateSign(partnerId, path, timestamp, accessToken, shopId, partnerKey);
-  const url = `${host}${path}?partner_id=${partnerId}&timestamp=${timestamp}&sign=${sign}&access_token=${accessToken}&shop_id=${shopId}`;
+  
+  // 构建基础 URL
+  let url = `${host}${path}?partner_id=${partnerId}&timestamp=${timestamp}&sign=${sign}&access_token=${accessToken}&shop_id=${shopId}`;
+  
+  // 将额外参数附加到 URL
+  Object.entries(extraParams).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      url += `&${key}=${encodeURIComponent(value)}`;
+    }
+  });
 
   try {
-    const response = await axios.get(url, { params });
+    const response = await axios.get(url);
     console.log(`[Shopee API] ${path} response:`, JSON.stringify(response.data).substring(0, 500));
     return response.data;
   } catch (error: any) {

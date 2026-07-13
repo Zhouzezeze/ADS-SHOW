@@ -41,16 +41,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       };
     }
 
-    // 测试2: 尝试获取广告活动列表 (get_campaign_id_list)
-    const testPath2 = "/api/v2/ads/get_campaign_id_list";
+    // 测试2: 尝试获取广告活动列表 (get_product_level_campaign_id_list)
+    const testPath2 = "/api/v2/ads/get_product_level_campaign_id_list";
     const timestamp2 = Math.floor(Date.now() / 1000);
     const baseString2 = `${partnerId}${testPath2}${timestamp2}${access_token}${shop_id}`;
     const sign2 = crypto.createHmac('sha256', partnerKey).update(baseString2).digest('hex');
-    const url2 = `${host}${testPath2}?partner_id=${partnerId}&timestamp=${timestamp2}&sign=${sign2}&access_token=${access_token}&shop_id=${shop_id}`;
+    const url2 = `${host}${testPath2}?partner_id=${partnerId}&timestamp=${timestamp2}&sign=${sign2}&access_token=${access_token}&shop_id=${shop_id}&ad_type=all&offset=0&limit=10`;
 
     let campaignResult = { success: false, data: null, error: null };
     try {
-      const response = await axios.get(url2, { params: { ad_type: 'all', offset: 0, limit: 10 } });
+      const response = await axios.get(url2);
       campaignResult = { success: true, data: response.data, error: null };
     } catch (err: any) {
       campaignResult = { 
@@ -60,16 +60,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       };
     }
 
-    // 测试3: 尝试获取商品广告列表 (get_product_ads_list)
-    const testPath3 = "/api/v2/ads/get_product_ads_list";
+    // 测试3: 尝试获取店铺广告实时数据 (get_all_cpc_ads_daily_performance)
+    const testPath3 = "/api/v2/ads/get_all_cpc_ads_daily_performance";
     const timestamp3 = Math.floor(Date.now() / 1000);
     const baseString3 = `${partnerId}${testPath3}${timestamp3}${access_token}${shop_id}`;
     const sign3 = crypto.createHmac('sha256', partnerKey).update(baseString3).digest('hex');
-    const url3 = `${host}${testPath3}?partner_id=${partnerId}&timestamp=${timestamp3}&sign=${sign3}&access_token=${access_token}&shop_id=${shop_id}`;
+    const today = new Date();
+    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const formatDate = (d: Date) => {
+      const dd = String(d.getDate()).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const yyyy = d.getFullYear();
+      return `${dd}-${mm}-${yyyy}`;
+    };
+    const url3 = `${host}${testPath3}?partner_id=${partnerId}&timestamp=${timestamp3}&sign=${sign3}&access_token=${access_token}&shop_id=${shop_id}&start_date=${formatDate(weekAgo)}&end_date=${formatDate(today)}`;
 
     let productAdsResult = { success: false, data: null, error: null };
     try {
-      const response = await axios.get(url3, { params: { offset: 0, limit: 10 } });
+      const response = await axios.get(url3);
       productAdsResult = { success: true, data: response.data, error: null };
     } catch (err: any) {
       productAdsResult = { 
