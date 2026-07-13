@@ -78,7 +78,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         end_date: endDate,
       }),
       shopeeApiCall("/api/v2/ads/get_product_level_campaign_id_list", partnerId, partnerKey, accessToken, shopId, {
-        ad_type: 'all',
         offset: '0',
         limit: '100',
       }),
