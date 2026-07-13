@@ -170,27 +170,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (dailyRes._error) errors.push(`日度表现: ${dailyRes._error}`);
     if (balanceRes._error) errors.push(`余额: ${balanceRes._error}`);
 
-    // 尝试获取广告活动 ID 列表
+    // 提取广告活动 ID 列表 (response.campaign_list[].campaign_id)
     let campaignIds: string[] = [];
-    let campaignListDebug = '';
     if (!campaignListRes._error && campaignListRes.response) {
       const resp = campaignListRes.response;
-      campaignListDebug = `campaign response keys: ${Object.keys(resp).join(',')}`;
-      if (Array.isArray(resp)) {
+      if (Array.isArray(resp.campaign_list)) {
+        campaignIds = resp.campaign_list.map((c: any) => String(c.campaign_id)).filter(Boolean);
+      } else if (Array.isArray(resp)) {
         campaignIds = resp.map((c: any) => String(c.campaign_id || c)).filter(Boolean);
-      } else if (resp.campaign_id_list && Array.isArray(resp.campaign_id_list)) {
-        campaignIds = resp.campaign_id_list.map((c: any) => String(c.campaign_id || c)).filter(Boolean);
-      } else if (resp.list && Array.isArray(resp.list)) {
-        campaignIds = resp.list.map((c: any) => String(c.campaign_id || c)).filter(Boolean);
       }
-      console.log(`[ads] Campaign IDs found: ${campaignIds.length}`, campaignIds.slice(0, 10));
+      console.log(`[ads] Campaign IDs found: ${campaignIds.length}`);
     } else if (campaignListRes._error) {
-      campaignListDebug = `campaign error: ${campaignListRes._error}`;
       console.log(`[ads] Campaign list error: ${campaignListRes._error}`);
       errors.push(`活动列表: ${campaignListRes._error}`);
-    } else {
-      campaignListDebug = `campaign response is empty/null, raw: ${JSON.stringify(campaignListRes).slice(0, 200)}`;
-      console.log(`[ads] Campaign list empty response`);
     }
 
     // 如果有广告活动 ID，抓取活动级表现数据
