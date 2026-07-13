@@ -76,8 +76,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       endDate = formatDate(today);
     }
 
-    // 并行请求: 店铺日度表现 + 余额
-    const [dailyRes, balanceRes] = await Promise.all([
+    // 并行请求: 店铺日度表现 + 余额 + 广告活动ID列表
+    const [dailyRes, balanceRes, campaignListRes] = await Promise.all([
       shopeeApiCall(
         "/api/v2/ads/get_all_cpc_ads_daily_performance",
         partnerId, partnerKey, accessToken, shopId,
@@ -86,6 +86,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       shopeeApiCall(
         "/api/v2/ads/get_total_balance",
         partnerId, partnerKey, accessToken, shopId
+      ),
+      shopeeApiCall(
+        "/api/v2/ads/get_product_level_campaign_id_list",
+        partnerId, partnerKey, accessToken, shopId,
+        { offset: '0', limit: '100' }
       ),
     ]);
 
@@ -106,7 +111,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       totalBalance = balanceRes.response?.total_balance || 0;
     }
 
-    // ===== 聚合汇总 =====
+    // ===== 聚合汇总（基于店铺日度数据） =====
     let totalImpressions = 0;
     let totalClicks = 0;
     let totalSpend = 0;
@@ -114,22 +119,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let totalSales = 0;
 
     records.forEach((item: any) => {
-      const imp = parseInt(String(item.impression || '0'), 10);
-      const clk = parseInt(String(item.clicks || '0'), 10);
-      const spend = parseFloat(String(item.expense || '0'));
-      const orders = parseInt(String(item.broad_order || '0'), 10);
-      const sales = parseFloat(String(item.broad_gmv || '0'));
-
-      console.log(`[ads] Day ${item.date}: imp=${imp}, clk=${clk}, spend=${spend}, orders=${orders}, sales=${sales}`);
-
-      totalImpressions += imp;
-      totalClicks += clk;
-      totalSpend += spend;
-      totalOrders += orders;
-      totalSales += sales;
+      totalImpressions += parseInt(String(item.impression || '0'), 10);
+      totalClicks += parseInt(String(item.clicks || '0'), 10);
+      totalSpend += parseFloat(String(item.expense || '0'));
+      totalOrders += parseInt(String(item.broad_order || '0'), 10);
+      totalSales += parseFloat(String(item.broad_gmv || '0'));
     });
-
-    console.log(`[ads] Totals: imp=${totalImpressions}, clk=${totalClicks}, spend=${totalSpend}, orders=${totalOrders}, sales=${totalSales}`);
 
     const summary = {
       impressions: totalImpressions,
@@ -169,53 +164,137 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       };
     });
 
-    // 商品数据 - 用每条日度记录作为一行展示
-    const products = records.map((item: any, idx: number) => {
-      const imp = parseInt(String(item.impression || '0'), 10);
-      const clk = parseInt(String(item.clicks || '0'), 10);
-      const spend = parseFloat(String(item.expense || '0'));
-      const orders = parseInt(String(item.broad_order || '0'), 10);
-      const sales = parseFloat(String(item.broad_gmv || '0'));
+    // ===== 广告活动级数据 =====
+    let products: any[] = [];
+    const errors: string[] = [];
+    if (dailyRes._error) errors.push(`日度表现: ${dailyRes._error}`);
+    if (balanceRes._error) errors.push(`余额: ${balanceRes._error}`);
 
-      let status: string = '正常';
-      if (clk > 20 && orders === 0) status = '无转化';
-      else if (imp > 500 && clk < 5) status = '点击率偏低';
-      else if (clk > 0 && orders > 0 && (orders / clk) < 0.01) status = '转化率偏低';
-      else if (spend > 0 && sales > 0 && (sales / spend) < 2) status = 'ROAS偏低';
-      else if (spend > 50 && orders === 0) status = '成本异常';
+    // 尝试获取广告活动 ID 列表
+    let campaignIds: string[] = [];
+    if (!campaignListRes._error && campaignListRes.response) {
+      const resp = campaignListRes.response;
+      if (Array.isArray(resp)) {
+        campaignIds = resp.map((c: any) => String(c.campaign_id || c)).filter(Boolean);
+      } else if (resp.campaign_id_list && Array.isArray(resp.campaign_id_list)) {
+        campaignIds = resp.campaign_id_list.map((c: any) => String(c.campaign_id || c)).filter(Boolean);
+      }
+      console.log(`[ads] Campaign IDs found: ${campaignIds.length}`, campaignIds.slice(0, 10));
+    } else if (campaignListRes._error) {
+      console.log(`[ads] Campaign list error: ${campaignListRes._error}`);
+    }
 
-      return {
-        id: String(idx),
-        sku: `day-${item.date || idx}`,
-        name: `${item.date || '未知日期'} 广告表现`,
-        image: '',
-        campaign_name: '',
-        ad_group: '',
-        date: item.date || '',
-        status,
-        impressions: imp,
-        clicks: clk,
-        ctr: imp > 0 ? parseFloat(((clk / imp) * 100).toFixed(2)) : 0,
-        spend: parseFloat(spend.toFixed(2)),
-        orders,
-        sales: parseFloat(sales.toFixed(2)),
-        acos: sales > 0 ? parseFloat(((spend / sales) * 100).toFixed(2)) : 0,
-        roas: spend > 0 ? parseFloat((sales / spend).toFixed(2)) : 0,
-        cvr: clk > 0 ? parseFloat(((orders / clk) * 100).toFixed(2)) : 0,
-        cpc: clk > 0 ? parseFloat((spend / clk).toFixed(2)) : 0,
-      };
-    });
+    // 如果有广告活动 ID，抓取活动级表现数据
+    if (campaignIds.length > 0) {
+      // 每次最多100个ID，分批请求
+      const batchSize = 100;
+      const campaignBatches: string[][] = [];
+      for (let i = 0; i < campaignIds.length; i += batchSize) {
+        campaignBatches.push(campaignIds.slice(i, i + batchSize));
+      }
+
+      for (const batch of campaignBatches) {
+        const campaignPerfRes = await shopeeApiCall(
+          "/api/v2/ads/get_product_campaign_daily_performance",
+          partnerId, partnerKey, accessToken, shopId,
+          {
+            start_date: startDate,
+            end_date: endDate,
+            campaign_id_list: batch.join(','),
+          }
+        );
+
+        if (campaignPerfRes._error) {
+          console.log(`[ads] Campaign perf error: ${campaignPerfRes._error}`);
+          errors.push(`活动表现: ${campaignPerfRes._error}`);
+        } else {
+          const perfRecords = Array.isArray(campaignPerfRes.response) ? campaignPerfRes.response : [];
+          console.log(`[ads] Campaign perf records: ${perfRecords.length}`);
+
+          perfRecords.forEach((item: any, idx: number) => {
+            const imp = parseInt(String(item.impression || '0'), 10);
+            const clk = parseInt(String(item.clicks || '0'), 10);
+            const spend = parseFloat(String(item.expense || '0'));
+            const orders = parseInt(String(item.broad_order || '0'), 10);
+            const sales = parseFloat(String(item.broad_gmv || '0'));
+
+            let status: string = '正常';
+            if (clk > 20 && orders === 0) status = '无转化';
+            else if (imp > 500 && clk < 5) status = '点击率偏低';
+            else if (clk > 0 && orders > 0 && (orders / clk) < 0.01) status = '转化率偏低';
+            else if (spend > 0 && sales > 0 && (sales / spend) < 2) status = 'ROAS偏低';
+            else if (spend > 50 && orders === 0) status = '成本异常';
+
+            products.push({
+              id: String(item.campaign_id || idx),
+              sku: String(item.product_id || item.item_id || item.campaign_id || ''),
+              name: item.campaign_name || item.ad_name || `活动 ${item.campaign_id || ''}`,
+              image: '',
+              campaign_name: item.campaign_name || '',
+              ad_group: item.ad_group_name || '',
+              date: item.date || '',
+              status,
+              impressions: imp,
+              clicks: clk,
+              ctr: imp > 0 ? parseFloat(((clk / imp) * 100).toFixed(2)) : 0,
+              spend: parseFloat(spend.toFixed(2)),
+              orders,
+              sales: parseFloat(sales.toFixed(2)),
+              acos: sales > 0 ? parseFloat(((spend / sales) * 100).toFixed(2)) : 0,
+              roas: spend > 0 ? parseFloat((sales / spend).toFixed(2)) : 0,
+              cvr: clk > 0 ? parseFloat(((orders / clk) * 100).toFixed(2)) : 0,
+              cpc: clk > 0 ? parseFloat((spend / clk).toFixed(2)) : 0,
+            });
+          });
+        }
+      }
+    }
+
+    // 如果没有活动级数据，回退到日度记录
+    if (products.length === 0) {
+      products = records.map((item: any, idx: number) => {
+        const imp = parseInt(String(item.impression || '0'), 10);
+        const clk = parseInt(String(item.clicks || '0'), 10);
+        const spend = parseFloat(String(item.expense || '0'));
+        const orders = parseInt(String(item.broad_order || '0'), 10);
+        const sales = parseFloat(String(item.broad_gmv || '0'));
+
+        let status: string = '正常';
+        if (clk > 20 && orders === 0) status = '无转化';
+        else if (imp > 500 && clk < 5) status = '点击率偏低';
+        else if (clk > 0 && orders > 0 && (orders / clk) < 0.01) status = '转化率偏低';
+        else if (spend > 0 && sales > 0 && (sales / spend) < 2) status = 'ROAS偏低';
+        else if (spend > 50 && orders === 0) status = '成本异常';
+
+        return {
+          id: String(idx),
+          sku: `day-${item.date || idx}`,
+          name: `${item.date || '未知日期'} 广告表现`,
+          image: '',
+          campaign_name: '',
+          ad_group: '',
+          date: item.date || '',
+          status,
+          impressions: imp,
+          clicks: clk,
+          ctr: imp > 0 ? parseFloat(((clk / imp) * 100).toFixed(2)) : 0,
+          spend: parseFloat(spend.toFixed(2)),
+          orders,
+          sales: parseFloat(sales.toFixed(2)),
+          acos: sales > 0 ? parseFloat(((spend / sales) * 100).toFixed(2)) : 0,
+          roas: spend > 0 ? parseFloat((sales / spend).toFixed(2)) : 0,
+          cvr: clk > 0 ? parseFloat(((orders / clk) * 100).toFixed(2)) : 0,
+          cpc: clk > 0 ? parseFloat((spend / clk).toFixed(2)) : 0,
+        };
+      });
+    }
 
     const burningSkus = products.filter((p: any) => p.status === '成本异常').length;
     const canAddBudget = products.filter((p: any) => p.roas > 5 && p.spend < 100).length;
     const highImpNoConv = products.filter((p: any) => p.status === '无转化' || p.status === '转化率偏低').length;
 
-    const errors: string[] = [];
-    if (dailyRes._error) errors.push(`日度表现: ${dailyRes._error}`);
-    if (balanceRes._error) errors.push(`余额: ${balanceRes._error}`);
-
     const diagnosis = {
-      totalSkus: records.length,
+      totalSkus: products.length,
       burningSkus,
       canAddBudget,
       highImpNoConv,
@@ -224,7 +303,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       totalSales: summary.sales,
       suggestion: errors.length > 0
         ? `部分API调用失败: ${errors.join('; ')}`
-        : `共 ${records.length} 天数据，${totalOrders} 个订单，整体 ROAS ${summary.roas}，花费 ฿${summary.spend.toFixed(2)}，销售 ฿${summary.sales.toFixed(2)}。`,
+        : `共 ${products.length} 条记录（${campaignIds.length} 个广告活动），${totalOrders} 个订单，整体 ROAS ${summary.roas}，花费 ฿${summary.spend.toFixed(2)}，销售 ฿${summary.sales.toFixed(2)}。`,
     };
 
     res.status(200).json({ summary, daily, products, diagnosis });
@@ -235,5 +314,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 }
 
 export const config = {
-  maxDuration: 30,
+  maxDuration: 60,
 };

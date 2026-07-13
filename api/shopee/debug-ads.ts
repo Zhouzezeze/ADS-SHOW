@@ -64,29 +64,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const endDate = formatDate(today);
 
   try {
-    // 调用3个API，返回完整的原始响应
-    const [balance, dailyPerf, campaignList] = await Promise.all([
-      shopeeApiCall("/api/v2/ads/get_total_balance", partnerId, partnerKey, accessToken, shopId),
-      shopeeApiCall("/api/v2/ads/get_all_cpc_ads_daily_performance", partnerId, partnerKey, accessToken, shopId, {
-        start_date: startDate,
-        end_date: endDate,
+    // 测试3种调用方式
+    const [campaignNoAdType, campaignWithAdType, campaignEmptyAdType] = await Promise.all([
+      shopeeApiCall("/api/v2/ads/get_product_level_campaign_id_list", partnerId, partnerKey, accessToken, shopId, {
+        offset: '0',
+        limit: '100',
       }),
       shopeeApiCall("/api/v2/ads/get_product_level_campaign_id_list", partnerId, partnerKey, accessToken, shopId, {
         ad_type: 'all',
         offset: '0',
         limit: '100',
       }),
+      shopeeApiCall("/api/v2/ads/get_product_level_campaign_id_list", partnerId, partnerKey, accessToken, shopId, {
+        ad_type: '',
+        offset: '0',
+        limit: '100',
+      }),
     ]);
 
     return res.status(200).json({
-      date_range: { start_date: startDate, end_date: endDate },
-      raw_balance: balance,
-      raw_daily_performance: dailyPerf,
-      raw_campaign_list: campaignList,
-      daily_records_count: Array.isArray(dailyPerf?.response) ? dailyPerf.response.length : 'not an array',
-      daily_first_record: Array.isArray(dailyPerf?.response) && dailyPerf.response.length > 0 ? dailyPerf.response[0] : null,
-      daily_all_field_names: Array.isArray(dailyPerf?.response) && dailyPerf.response.length > 0 ? Object.keys(dailyPerf.response[0]) : [],
-      campaign_response_keys: campaignList?.response ? Object.keys(campaignList.response) : 'no response',
+      test_1_no_ad_type: campaignNoAdType,
+      test_2_ad_type_all: campaignWithAdType,
+      test_3_ad_type_empty: campaignEmptyAdType,
     });
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
