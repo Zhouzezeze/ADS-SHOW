@@ -15,7 +15,7 @@ async function shopeeApiCall(
   shopId: string,
   extraParams: Record<string, string> = {}
 ) {
-  const host = "https://openplatform.shopee.cn";
+  const host = "https://open.shopee.cn";
   const timestamp = Math.floor(Date.now() / 1000);
   const sign = generateSign(partnerId, path, timestamp, accessToken, shopId, partnerKey);
 
@@ -36,12 +36,33 @@ async function shopeeApiCall(
   try {
     const response = await axios.get(url, { validateStatus: () => true });
     const body = response.data;
+    const status = response.status;
+    const fullResponse = JSON.stringify(body);
+    
+    console.log(`[Diagnose] ${path} HTTP ${status}: ${fullResponse.substring(0, 500)}`);
+    
     if (body.error && body.error !== '') {
-      return { success: false, error: `${body.error}: ${body.message || ''}`, url: url.substring(0, 300) };
+      return { 
+        success: false, 
+        error: `${body.error}: ${body.message || ''}`, 
+        http_status: status,
+        full_response: fullResponse.substring(0, 500),
+        url: url.substring(0, 300) 
+      };
     }
-    return { success: true, data: body, url: url.substring(0, 300) };
+    return { 
+      success: true, 
+      data: body, 
+      http_status: status,
+      url: url.substring(0, 300) 
+    };
   } catch (err: any) {
-    return { success: false, error: err.message, url: url.substring(0, 300) };
+    return { 
+      success: false, 
+      error: err.message, 
+      error_response: err.response?.data,
+      url: url.substring(0, 300) 
+    };
   }
 }
 

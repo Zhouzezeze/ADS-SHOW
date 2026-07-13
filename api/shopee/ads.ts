@@ -24,7 +24,7 @@ async function shopeeApiCall(
   shopId: string,
   extraParams: Record<string, string> = {}
 ) {
-  const host = "https://openplatform.shopee.cn";
+  const host = "https://open.shopee.cn";
   const timestamp = Math.floor(Date.now() / 1000);
   const sign = generateSign(partnerId, path, timestamp, accessToken, shopId, partnerKey);
 
@@ -42,10 +42,20 @@ async function shopeeApiCall(
     .join('&');
   const url = `${host}${path}?${qs}`;
 
+  console.log(`[Shopee API] Calling ${path}`);
+  console.log(`[Shopee API] Host: ${host}`);
+  
   const response = await axios.get(url, { validateStatus: () => true });
   const body = response.data;
+  const status = response.status;
+  
+  console.log(`[Shopee API] ${path} HTTP status: ${status}`);
+  console.log(`[Shopee API] ${path} response:`, JSON.stringify(body).substring(0, 1000));
+  
   if (body.error && body.error !== '') {
-    throw new Error(`Shopee API ${path}: ${body.error} - ${body.message || ''}`);
+    const errMsg = `Shopee API ${path}: error=${body.error}, message=${body.message || ''}, status=${status}`;
+    console.error(`[Shopee API Error] ${errMsg}`);
+    throw new Error(errMsg);
   }
   return body;
 }
