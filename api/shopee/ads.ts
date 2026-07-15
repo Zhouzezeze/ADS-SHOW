@@ -212,12 +212,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const perfRecords = Array.isArray(campaignPerfRes.response) ? campaignPerfRes.response : [];
           console.log(`[ads] Campaign perf records: ${perfRecords.length}`);
 
+          // 收集所有 item_id 用于批量获取商品图片
+          const itemIdSet = new Set<string>();
+          perfRecords.forEach((item: any) => {
+            const itemId = String(item.item_id || item.product_id || '');
+            if (itemId && itemId !== '0' && itemId !== '') itemIdSet.add(itemId);
+          });
+          const allItemIds = Array.from(itemIdSet);
+
+          // 批量获取商品基础信息（每次最多50个）
+          const itemImageMap: Record<string, { image: string; name: string }> = {};
+          if (allItemIds.length > 0) {
+            const itemBatchSize = 50;
+            for (let i = 0; i < allItemIds.length; i += itemBatchSize) {
+              const batchIds = allItemIds.slice(i, i + itemBatchSize);
+              const itemInfoRes = await shopeeApiCall(
+                "/api/v2/product/get_item_base_info",
+                partnerId, partnerKey, accessToken, shopId,
+                { item_id_list: batchIds.join(',') }
+              );
+
+              if (!itemInfoRes._error && itemInfoRes.response?.item) {
+                const items = itemInfoRes.response.item;
+                items.forEach((it: any) => {
+                  const id = String(it.item_id);
+                  itemImageMap[id] = {
+                    image: it.image_url || '',
+                    name: it.name || '',
+                  };
+                });
+              }
+              console.log(`[ads] Item info batch ${i}: requested ${batchIds.length}, got ${!itemInfoRes._error ? (itemInfoRes.response?.item?.length || 0) : 'error'}`);
+            }
+          }
+
           perfRecords.forEach((item: any, idx: number) => {
             const imp = parseInt(String(item.impression || '0'), 10);
             const clk = parseInt(String(item.clicks || '0'), 10);
             const spend = parseFloat(String(item.expense || '0'));
             const orders = parseInt(String(item.broad_order || '0'), 10);
             const sales = parseFloat(String(item.broad_gmv || '0'));
+            const itemId = String(item.item_id || item.product_id || '');
+            const itemInfo = itemImageMap[itemId];
 
             let status: string = '正常';
             if (clk > 20 && orders === 0) status = '无转化';
@@ -228,9 +264,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
             products.push({
               id: String(item.campaign_id || idx),
-              sku: String(item.product_id || item.item_id || item.campaign_id || ''),
-              name: item.campaign_name || item.ad_name || `活动 ${item.campaign_id || ''}`,
-              image: '',
+              sku: itemId || String(item.campaign_id || ''),
+              name: itemInfo?.name || item.campaign_name || item.ad_name || `活动 ${item.campaign_id || ''}`,
+              image: itemInfo?.image || '',
               campaign_name: item.campaign_name || '',
               ad_group: item.ad_group_name || '',
               date: item.date || '',
