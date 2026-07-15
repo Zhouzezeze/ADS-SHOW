@@ -8,24 +8,56 @@ interface FetchResult {
   error?: string;
 }
 
-// Token 管理器：自动检查过期并续期
-async function getValidAccessToken(): Promise<{ token: string; shopId: string } | null> {
-  const accessToken = localStorage.getItem('shopee_access_token');
-  const refreshToken = localStorage.getItem('shopee_refresh_token');
-  const shopId = localStorage.getItem('shopee_shop_id');
-  const expiryStr = localStorage.getItem('shopee_token_expiry') || localStorage.getItem('shopee_token_expire');
+// 从服务器端获取 Token（跨设备支持）
+async function fetchTokenFromServer(): Promise<{ token: string; shopId: string; refreshToken?: string } | null> {
+  try {
+    const res = await fetch('/api/shopee/token-store');
+    const data = await res.json();
+    if (data.connected && data.access_token && data.shop_id) {
+      localStorage.setItem('shopee_access_token', data.access_token);
+      localStorage.setItem('shopee_shop_id', data.shop_id);
+      if (data.refresh_token) localStorage.setItem('shopee_refresh_token', data.refresh_token);
+      if (data.token_expiry) localStorage.setItem('shopee_token_expiry', data.token_expiry);
+      console.log('[Shopee] Token loaded from server');
+      return { token: data.access_token, shopId: data.shop_id, refreshToken: data.refresh_token };
+    }
+    return null;
+  } catch (err) {
+    console.warn('[Shopee] Failed to fetch token from server:', err);
+    return null;
+  }
+}
 
-  if (!shopId) return null;
+// Token 管理器：自动检查过期并续期，支持跨设备
+async function getValidAccessToken(): Promise<{ token: string; shopId: string } | null> {
+  let accessToken = localStorage.getItem('shopee_access_token');
+  let refreshToken = localStorage.getItem('shopee_refresh_token');
+  let shopId = localStorage.getItem('shopee_shop_id');
+  let expiryStr = localStorage.getItem('shopee_token_expiry') || localStorage.getItem('shopee_token_expire');
+
+  // 本地没有 Token，尝试从服务器获取
+  if (!accessToken || !shopId) {
+    console.log('[Shopee] No local token, fetching from server...');
+    const serverToken = await fetchTokenFromServer();
+    if (serverToken) {
+      accessToken = serverToken.token;
+      shopId = serverToken.shopId;
+      refreshToken = serverToken.refreshToken || null;
+      expiryStr = localStorage.getItem('shopee_token_expiry') || localStorage.getItem('shopee_token_expire');
+    } else {
+      return null;
+    }
+  }
 
   const expiry = expiryStr ? parseInt(expiryStr) : 0;
   const now = Date.now();
   const isExpired = now >= expiry - 5 * 60 * 1000;
 
   if (accessToken && !isExpired) {
-    console.log('[Shopee] Token valid, using cached token');
     return { token: accessToken, shopId };
   }
 
+  // Token 过期，尝试续期
   if (refreshToken) {
     console.log('[Shopee] Token expired, attempting refresh...');
     try {
@@ -36,19 +68,30 @@ async function getValidAccessToken(): Promise<{ token: string; shopId: string } 
         localStorage.setItem('shopee_access_token', data.access_token);
         localStorage.setItem('shopee_refresh_token', data.refresh_token);
         localStorage.setItem('shopee_token_expiry', (Date.now() + (data.expire_in || 14400) * 1000).toString());
+
+        // 同步更新服务器上的 Token
+        try {
+          await fetch('/api/shopee/token-store', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              access_token: data.access_token,
+              refresh_token: data.refresh_token,
+              shop_id: shopId,
+              expire_in: data.expire_in || 14400,
+            }),
+          });
+        } catch (e) { /* ignore */ }
+
         return { token: data.access_token, shopId };
-      } else {
-        console.error('[Shopee] Refresh failed:', data.error);
-        localStorage.removeItem('shopee_access_token');
-        localStorage.removeItem('shopee_refresh_token');
-        return null;
       }
     } catch (err) {
       console.error('[Shopee] Refresh error:', err);
-      return null;
     }
   }
 
+  localStorage.removeItem('shopee_access_token');
+  localStorage.removeItem('shopee_refresh_token');
   return null;
 }
 

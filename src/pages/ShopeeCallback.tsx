@@ -21,23 +21,36 @@ const ShopeeCallback: React.FC = () => {
       }
 
       try {
-        // 构建 API URL，同时尝试两种模式
         const apiUrl = isMainAccount
           ? `/api/shopee/get-token?code=${code}&shop_id=${idToUse}&is_main_account=1`
           : `/api/shopee/get-token?code=${code}&shop_id=${idToUse}`;
 
-        console.log('[ShopeeCallback] Exchanging token with URL:', apiUrl);
         const res = await fetch(apiUrl);
         const data = await res.json();
 
-        console.log('[ShopeeCallback] Token exchange response:', data);
-
         if (data.access_token) {
           const finalShopId = data.shop_id || idToUse;
+
           localStorage.setItem('shopee_access_token', data.access_token);
           localStorage.setItem('shopee_refresh_token', data.refresh_token || '');
           localStorage.setItem('shopee_shop_id', finalShopId);
           localStorage.setItem('shopee_token_expiry', (Date.now() + (data.expire_in || 14400) * 1000).toString());
+
+          // 同时保存到服务器，这样任何设备都能访问
+          try {
+            await fetch('/api/shopee/token-store', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                access_token: data.access_token,
+                refresh_token: data.refresh_token || '',
+                shop_id: finalShopId,
+                expire_in: data.expire_in || 14400,
+              }),
+            });
+          } catch (e) {
+            console.warn('[ShopeeCallback] Failed to save token to server, localStorage still works');
+          }
 
           setStatus('success');
           setMessage(`店铺授权成功！Shop ID: ${finalShopId}`);

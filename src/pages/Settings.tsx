@@ -6,6 +6,10 @@ const Settings: React.FC = () => {
   const [shopId, setShopId] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const [serverStatus, setServerStatus] = useState<'unknown' | 'connected' | 'disconnected'>('unknown');
+
+  const [serverTokenStatus, setServerTokenStatus] = useState<'unknown' | 'connected' | 'disconnected'>('unknown');
+
   useEffect(() => {
     const token = localStorage.getItem('shopee_access_token');
     const sid = localStorage.getItem('shopee_shop_id');
@@ -13,6 +17,22 @@ const Settings: React.FC = () => {
       setShopeeConnected(true);
       setShopId(sid);
     }
+
+    // Check server-side token status
+    fetch('/api/shopee/token-store')
+      .then(res => res.json())
+      .then(data => {
+        if (data.connected) {
+          setServerTokenStatus('connected');
+          if (!shopeeConnected) {
+            setShopeeConnected(true);
+            setShopId(data.shop_id);
+          }
+        } else {
+          setServerTokenStatus('disconnected');
+        }
+      })
+      .catch(() => setServerTokenStatus('unknown'));
   }, []);
 
   const handleAuth = async () => {
@@ -32,13 +52,19 @@ const Settings: React.FC = () => {
     }
   };
 
-  const handleDisconnect = () => {
+  const handleDisconnect = async () => {
     if (window.confirm('确定要断开此店铺连接吗？')) {
       localStorage.removeItem('shopee_access_token');
       localStorage.removeItem('shopee_refresh_token');
       localStorage.removeItem('shopee_shop_id');
       localStorage.removeItem('shopee_token_expiry');
       localStorage.removeItem('shopee_token_expire');
+
+      // 同时清除服务器端 Token
+      try {
+        await fetch('/api/shopee/token-store', { method: 'DELETE' });
+      } catch (e) { /* ignore */ }
+
       setShopeeConnected(false);
       setShopId('');
       window.location.reload();
