@@ -278,9 +278,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       debugInfo.push(`products_with_data: ${products.length}`);
     }
 
-    // 如果没有活动级数据，回退到日度记录
-    if (products.length === 0) {
-      debugInfo.push('fallback_to_daily');
+    // 按花费降序排列，有数据的活动排在前面
+    products.sort((a, b) => b.spend - a.spend);
+
+    // 如果活动级数据全部为0（手动广告API不覆盖实际花费），回退到日度记录
+    const campaignHasData = products.some((p: any) => p.spend > 0);
+    if (!campaignHasData && records.length > 0) {
+      debugInfo.push('campaign_all_zero_fallback_to_daily');
+      products = [];
       products = records.map((item: any, idx: number) => {
         const imp = parseInt(String(item.impression || '0'), 10);
         const clk = parseInt(String(item.clicks || '0'), 10);
