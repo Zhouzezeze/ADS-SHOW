@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { ProductData, ProductStatus } from '../types';
-import { ChevronUp, ChevronDown } from 'lucide-react';
+import { ChevronUp, ChevronDown, Calendar } from 'lucide-react';
 
 interface ProductTableProps {
   products: ProductData[];
@@ -82,7 +82,13 @@ const ProductTable: React.FC<ProductTableProps> = ({ products }) => {
                 </td>
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-3">
-                    <img src={p.image} alt="" className="w-10 h-10 rounded-lg object-cover bg-gray-100" />
+                    {p.image ? (
+                      <img src={p.image} alt="" className="w-10 h-10 rounded-lg object-cover bg-gray-100" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
+                        <Calendar className="w-5 h-5 text-gray-400" />
+                      </div>
+                    )}
                     <div>
                       <div className="text-sm font-bold text-gray-900 truncate max-w-[150px]">{p.name}</div>
                       <div className="text-xs text-gray-500 font-mono">{p.sku}</div>
