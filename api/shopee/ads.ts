@@ -211,6 +211,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         } else {
           const perfRecords = Array.isArray(campaignPerfRes.response) ? campaignPerfRes.response : [];
           console.log(`[ads] Campaign perf records: ${perfRecords.length}`);
+          
+          if (perfRecords.length > 0) {
+            console.log(`[ads] First perf record keys:`, Object.keys(perfRecords[0]));
+            console.log(`[ads] First perf record sample:`, perfRecords[0]);
+          }
 
           // 收集所有 item_id 用于批量获取商品图片
           const itemIdSet = new Set<string>();
@@ -222,27 +227,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           // 批量获取商品基础信息（每次最多50个）
           const itemImageMap: Record<string, { image: string; name: string }> = {};
+          console.log(`[ads] Found ${allItemIds.length} unique item IDs:`, allItemIds.slice(0, 5));
+          
           if (allItemIds.length > 0) {
             const itemBatchSize = 50;
             for (let i = 0; i < allItemIds.length; i += itemBatchSize) {
               const batchIds = allItemIds.slice(i, i + itemBatchSize);
+              console.log(`[ads] Fetching item info for batch:`, batchIds);
+              
               const itemInfoRes = await shopeeApiCall(
                 "/api/v2/product/get_item_base_info",
                 partnerId, partnerKey, accessToken, shopId,
                 { item_id_list: batchIds.join(',') }
               );
 
-              if (!itemInfoRes._error && itemInfoRes.response?.item) {
-                const items = itemInfoRes.response.item;
-                items.forEach((it: any) => {
-                  const id = String(it.item_id);
-                  itemImageMap[id] = {
-                    image: it.image_url || '',
-                    name: it.name || '',
-                  };
-                });
+              if (itemInfoRes._error) {
+                console.error(`[ads] get_item_base_info failed:`, itemInfoRes._error);
+              } else {
+                console.log(`[ads] Item info response:`, JSON.stringify(itemInfoRes.response).substring(0, 200));
+                if (itemInfoRes.response?.item) {
+                  const items = itemInfoRes.response.item;
+                  items.forEach((it: any) => {
+                    const id = String(it.item_id);
+                    itemImageMap[id] = {
+                      image: it.image_url || '',
+                      name: it.name || '',
+                    };
+                  });
+                  console.log(`[ads] Successfully fetched ${items.length} item infos`);
+                }
               }
-              console.log(`[ads] Item info batch ${i}: requested ${batchIds.length}, got ${!itemInfoRes._error ? (itemInfoRes.response?.item?.length || 0) : 'error'}`);
             }
           }
 
