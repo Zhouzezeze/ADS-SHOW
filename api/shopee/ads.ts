@@ -228,7 +228,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           campaignList.forEach((campaign: any) => {
             const metricsList = campaign.metrics_list || [];
-            if (metricsList.length === 0) return;
 
             // 按活动聚合所有日期的数据
             let totalImp = 0, totalClk = 0, totalSpend = 0, totalOrders = 0, totalSales = 0;
@@ -240,15 +239,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               totalSales += parseFloat(String(m.broad_gmv || '0'));
             });
 
-            // 只保留有数据的活动
-            if (totalSpend <= 0 && totalImp <= 0) return;
-
-            let status: string = '正常';
-            if (totalClk > 20 && totalOrders === 0) status = '无转化';
+            let status: string = '无数据';
+            if (totalSpend <= 0 && totalImp <= 0) {
+              status = '无数据';
+            } else if (totalClk > 20 && totalOrders === 0) status = '无转化';
             else if (totalImp > 500 && totalClk < 5) status = '点击率偏低';
             else if (totalClk > 0 && totalOrders > 0 && (totalOrders / totalClk) < 0.01) status = '转化率偏低';
             else if (totalSpend > 0 && totalSales > 0 && (totalSales / totalSpend) < 2) status = 'ROAS偏低';
             else if (totalSpend > 50 && totalOrders === 0) status = '成本异常';
+            else status = '正常';
 
             const adName = campaign.ad_name || `活动 ${campaign.campaign_id || ''}`;
 
@@ -258,7 +257,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               name: adName,
               image: '',
               campaign_name: adName,
-              ad_group: campaign.ad_type || '',
+              ad_group: campaign.ad_type || campaign.campaign_placement || '',
               date: '',
               status,
               impressions: totalImp,
