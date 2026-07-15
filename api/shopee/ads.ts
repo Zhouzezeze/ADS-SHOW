@@ -218,7 +218,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         } else {
           const respKeys = Object.keys(campaignPerfRes.response || {});
           const campaignList = campaignPerfRes.response?.campaign_list || [];
-          debugInfo.push(`batch${batchIdx}: respKeys=[${respKeys}], campaigns=${campaignList.length}`);
+          
+          // 记录第一个活动的详细结构
+          if (batchIdx === 0 && campaignList.length > 0) {
+            const first = campaignList[0];
+            const campKeys = Object.keys(first);
+            const metricsList0 = first.metrics_list || [];
+            debugInfo.push(`camp0 keys=[${campKeys}], metrics0 len=${metricsList0.length}`);
+            if (metricsList0.length > 0) {
+              debugInfo.push(`metric0 keys=[${Object.keys(metricsList0[0])}], sample=${JSON.stringify(metricsList0[0]).substring(0, 150)}`);
+            }
+          }
+          debugInfo.push(`batch${batchIdx}: campaigns=${campaignList.length}`);
 
           campaignList.forEach((campaign: any) => {
             const metricsList = campaign.metrics_list || [];
