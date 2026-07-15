@@ -19,6 +19,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // GET: 读取已保存的 Token
   if (req.method === 'GET') {
     try {
+      // 诊断：检查环境变量是否注入
+      if (req.query.debug === 'true') {
+        return res.status(200).json({
+          debug: true,
+          KV_REST_API_URL: process.env.KV_REST_API_URL ? 'SET' : 'NOT SET',
+          KV_REST_API_TOKEN: process.env.KV_REST_API_TOKEN ? 'SET' : 'NOT SET',
+          UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL ? 'SET' : 'NOT SET',
+          UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN ? 'SET' : 'NOT SET',
+          redisUrl_used: redisUrl || 'EMPTY',
+          redisToken_used: redisToken ? 'SET' : 'NOT SET',
+        });
+      }
+
       const token = await redis.get<string>('shopee_access_token');
       const refreshToken = await redis.get<string>('shopee_refresh_token');
       const shopId = await redis.get<string>('shopee_shop_id');
