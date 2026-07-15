@@ -185,16 +185,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       errors.push(`活动列表: ${campaignListRes._error}`);
     }
 
+    // 调试信息（会返回到 diagnosis.suggestion 中）
+    const debugInfo: string[] = [];
+
     // 如果有广告活动 ID，抓取活动级表现数据
     if (campaignIds.length > 0) {
-      // 每次最多100个ID，分批请求
-      const batchSize = 100;
+      // 每次最多20个ID（Shopee API 限制）
+      const batchSize = 20;
       const campaignBatches: string[][] = [];
       for (let i = 0; i < campaignIds.length; i += batchSize) {
         campaignBatches.push(campaignIds.slice(i, i + batchSize));
       }
 
-      for (const batch of campaignBatches) {
+      debugInfo.push(`campaigns: ${campaignIds.length}, batches: ${campaignBatches.length}`);
+
+      for (let batchIdx = 0; batchIdx < campaignBatches.length; batchIdx++) {
+        const batch = campaignBatches[batchIdx];
         const campaignPerfRes = await shopeeApiCall(
           "/api/v2/ads/get_product_campaign_daily_performance",
           partnerId, partnerKey, accessToken, shopId,
@@ -206,14 +212,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         );
 
         if (campaignPerfRes._error) {
-          console.log(`[ads] Campaign perf error: ${campaignPerfRes._error}`);
-          errors.push(`活动表现: ${campaignPerfRes._error}`);
+          console.log(`[ads] Campaign perf error (batch ${batchIdx}): ${campaignPerfRes._error}`);
+          debugInfo.push(`batch${batchIdx} error: ${campaignPerfRes._error}`);
+          errors.push(`活动表现batch${batchIdx}: ${campaignPerfRes._error}`);
         } else {
-          // API 返回结构: response.campaign_list[].metrics_list[]
+          const respKeys = Object.keys(campaignPerfRes.response || {});
           const campaignList = campaignPerfRes.response?.campaign_list || [];
-          console.log(`[ads] Campaigns with perf data: ${campaignList.length}`);
+          debugInfo.push(`batch${batchIdx}: respKeys=[${respKeys}], campaigns=${campaignList.length}`);
 
-          campaignList.forEach((campaign: any, idx: number) => {
+          campaignList.forEach((campaign: any) => {
             const metricsList = campaign.metrics_list || [];
             if (metricsList.length === 0) return;
 
@@ -227,7 +234,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               totalSales += parseFloat(String(m.broad_gmv || '0'));
             });
 
-            // 只保留有花费的活动
+            // 只保留有数据的活动
             if (totalSpend <= 0 && totalImp <= 0) return;
 
             let status: string = '正常';
@@ -240,7 +247,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const adName = campaign.ad_name || `活动 ${campaign.campaign_id || ''}`;
 
             products.push({
-              id: String(campaign.campaign_id || idx),
+              id: String(campaign.campaign_id || products.length),
               sku: String(campaign.campaign_id || ''),
               name: adName,
               image: '',
@@ -260,14 +267,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               cpc: totalClk > 0 ? parseFloat((totalSpend / totalClk).toFixed(2)) : 0,
             });
           });
-
-          console.log(`[ads] Total products with data: ${products.length}`);
         }
       }
+
+      debugInfo.push(`products_with_data: ${products.length}`);
     }
 
     // 如果没有活动级数据，回退到日度记录
     if (products.length === 0) {
+      debugInfo.push('fallback_to_daily');
       products = records.map((item: any, idx: number) => {
         const imp = parseInt(String(item.impression || '0'), 10);
         const clk = parseInt(String(item.clicks || '0'), 10);
@@ -317,9 +325,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       overallRoas: summary.roas,
       totalSpend: summary.spend,
       totalSales: summary.sales,
+      debug_info: debugInfo.join(' | '),
       suggestion: errors.length > 0
-        ? `部分API调用失败: ${errors.join('; ')}`
-        : `共 ${products.length} 条记录（${campaignIds.length} 个广告活动），${totalOrders} 个订单，整体 ROAS ${summary.roas}，花费 ฿${summary.spend.toFixed(2)}，销售 ฿${summary.sales.toFixed(2)}。`,
+        ? `部分API调用失败: ${errors.join('; ')} | DEBUG: ${debugInfo.join(' | ')}`
+        : `共 ${products.length} 条记录（${campaignIds.length} 个广告活动），${totalOrders} 个订单，整体 ROAS ${summary.roas}，花费 ฿${summary.spend.toFixed(2)}，销售 ฿${summary.sales.toFixed(2)}。| DEBUG: ${debugInfo.join(' | ')}`,
     };
 
     res.status(200).json({ summary, daily, products, diagnosis });
