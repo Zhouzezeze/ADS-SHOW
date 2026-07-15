@@ -283,9 +283,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // 如果活动级数据全部为0（手动广告API不覆盖实际花费），回退到日度记录
     const campaignHasData = products.some((p: any) => p.spend > 0);
+    let usingDailyData = false;
     if (!campaignHasData && records.length > 0) {
-      debugInfo.push('campaign_all_zero_fallback_to_daily');
-      products = [];
+      usingDailyData = true;
+      debugInfo.push('fallback_to_daily');
       products = records.map((item: any, idx: number) => {
         const imp = parseInt(String(item.impression || '0'), 10);
         const clk = parseInt(String(item.clicks || '0'), 10);
@@ -323,22 +324,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
+    // 基于 products 重新计算诊断信息
     const burningSkus = products.filter((p: any) => p.status === '成本异常').length;
     const canAddBudget = products.filter((p: any) => p.roas > 5 && p.spend < 100).length;
     const highImpNoConv = products.filter((p: any) => p.status === '无转化' || p.status === '转化率偏低').length;
+    
+    // 从 products 重新汇总，确保数据一致
+    const productTotals = products.reduce((acc, p) => {
+      acc.spend += p.spend;
+      acc.sales += p.sales;
+      acc.orders += p.orders;
+      return acc;
+    }, { spend: 0, sales: 0, orders: 0 });
 
     const diagnosis = {
       totalSkus: products.length,
       burningSkus,
       canAddBudget,
       highImpNoConv,
-      overallRoas: summary.roas,
-      totalSpend: summary.spend,
-      totalSales: summary.sales,
+      overallRoas: productTotals.spend > 0 ? parseFloat((productTotals.sales / productTotals.spend).toFixed(2)) : 0,
+      totalSpend: parseFloat(productTotals.spend.toFixed(2)),
+      totalSales: parseFloat(productTotals.sales.toFixed(2)),
       debug_info: debugInfo.join(' | '),
-      suggestion: errors.length > 0
-        ? `部分API调用失败: ${errors.join('; ')} | DEBUG: ${debugInfo.join(' | ')}`
-        : `共 ${products.length} 条记录（${campaignIds.length} 个广告活动），${totalOrders} 个订单，整体 ROAS ${summary.roas}，花费 ฿${summary.spend.toFixed(2)}，销售 ฿${summary.sales.toFixed(2)}。| DEBUG: ${debugInfo.join(' | ')}`,
+      suggestion: usingDailyData
+        ? `共 ${products.length} 天数据，${productTotals.orders} 个订单，整体 ROAS ${(productTotals.sales / productTotals.spend).toFixed(2)}，花费 ฿${productTotals.spend.toFixed(2)}，销售 ฿${productTotals.sales.toFixed(2)}。`
+        : `共 ${products.length} 个广告活动，${productTotals.orders} 个订单，整体 ROAS ${(productTotals.sales / productTotals.spend).toFixed(2)}，花费 ฿${productTotals.spend.toFixed(2)}，销售 ฿${productTotals.sales.toFixed(2)}。`,
     };
 
     res.status(200).json({ summary, daily, products, diagnosis });
