@@ -209,94 +209,59 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           console.log(`[ads] Campaign perf error: ${campaignPerfRes._error}`);
           errors.push(`活动表现: ${campaignPerfRes._error}`);
         } else {
-          const perfRecords = Array.isArray(campaignPerfRes.response) ? campaignPerfRes.response : [];
-          console.log(`[ads] Campaign perf records: ${perfRecords.length}`);
-          
-          if (perfRecords.length > 0) {
-            console.log(`[ads] First perf record keys:`, Object.keys(perfRecords[0]));
-            console.log(`[ads] First perf record sample:`, perfRecords[0]);
-          }
+          // API 返回结构: response.campaign_list[].metrics_list[]
+          const campaignList = campaignPerfRes.response?.campaign_list || [];
+          console.log(`[ads] Campaigns with perf data: ${campaignList.length}`);
 
-          // 收集所有 item_id 用于批量获取商品图片
-          const itemIdSet = new Set<string>();
-          perfRecords.forEach((item: any) => {
-            const itemId = String(item.item_id || item.product_id || '');
-            if (itemId && itemId !== '0' && itemId !== '') itemIdSet.add(itemId);
-          });
-          const allItemIds = Array.from(itemIdSet);
+          campaignList.forEach((campaign: any, idx: number) => {
+            const metricsList = campaign.metrics_list || [];
+            if (metricsList.length === 0) return;
 
-          // 批量获取商品基础信息（每次最多50个）
-          const itemImageMap: Record<string, { image: string; name: string }> = {};
-          console.log(`[ads] Found ${allItemIds.length} unique item IDs:`, allItemIds.slice(0, 5));
-          
-          if (allItemIds.length > 0) {
-            const itemBatchSize = 50;
-            for (let i = 0; i < allItemIds.length; i += itemBatchSize) {
-              const batchIds = allItemIds.slice(i, i + itemBatchSize);
-              console.log(`[ads] Fetching item info for batch:`, batchIds);
-              
-              const itemInfoRes = await shopeeApiCall(
-                "/api/v2/product/get_item_base_info",
-                partnerId, partnerKey, accessToken, shopId,
-                { item_id_list: batchIds.join(',') }
-              );
+            // 按活动聚合所有日期的数据
+            let totalImp = 0, totalClk = 0, totalSpend = 0, totalOrders = 0, totalSales = 0;
+            metricsList.forEach((m: any) => {
+              totalImp += parseInt(String(m.impression || '0'), 10);
+              totalClk += parseInt(String(m.clicks || '0'), 10);
+              totalSpend += parseFloat(String(m.expense || '0'));
+              totalOrders += parseInt(String(m.broad_order || '0'), 10);
+              totalSales += parseFloat(String(m.broad_gmv || '0'));
+            });
 
-              if (itemInfoRes._error) {
-                console.error(`[ads] get_item_base_info failed:`, itemInfoRes._error);
-              } else {
-                console.log(`[ads] Item info response:`, JSON.stringify(itemInfoRes.response).substring(0, 200));
-                if (itemInfoRes.response?.item) {
-                  const items = itemInfoRes.response.item;
-                  items.forEach((it: any) => {
-                    const id = String(it.item_id);
-                    itemImageMap[id] = {
-                      image: it.image_url || '',
-                      name: it.name || '',
-                    };
-                  });
-                  console.log(`[ads] Successfully fetched ${items.length} item infos`);
-                }
-              }
-            }
-          }
-
-          perfRecords.forEach((item: any, idx: number) => {
-            const imp = parseInt(String(item.impression || '0'), 10);
-            const clk = parseInt(String(item.clicks || '0'), 10);
-            const spend = parseFloat(String(item.expense || '0'));
-            const orders = parseInt(String(item.broad_order || '0'), 10);
-            const sales = parseFloat(String(item.broad_gmv || '0'));
-            const itemId = String(item.item_id || item.product_id || '');
-            const itemInfo = itemImageMap[itemId];
+            // 只保留有花费的活动
+            if (totalSpend <= 0 && totalImp <= 0) return;
 
             let status: string = '正常';
-            if (clk > 20 && orders === 0) status = '无转化';
-            else if (imp > 500 && clk < 5) status = '点击率偏低';
-            else if (clk > 0 && orders > 0 && (orders / clk) < 0.01) status = '转化率偏低';
-            else if (spend > 0 && sales > 0 && (sales / spend) < 2) status = 'ROAS偏低';
-            else if (spend > 50 && orders === 0) status = '成本异常';
+            if (totalClk > 20 && totalOrders === 0) status = '无转化';
+            else if (totalImp > 500 && totalClk < 5) status = '点击率偏低';
+            else if (totalClk > 0 && totalOrders > 0 && (totalOrders / totalClk) < 0.01) status = '转化率偏低';
+            else if (totalSpend > 0 && totalSales > 0 && (totalSales / totalSpend) < 2) status = 'ROAS偏低';
+            else if (totalSpend > 50 && totalOrders === 0) status = '成本异常';
+
+            const adName = campaign.ad_name || `活动 ${campaign.campaign_id || ''}`;
 
             products.push({
-              id: String(item.campaign_id || idx),
-              sku: itemId || String(item.campaign_id || ''),
-              name: itemInfo?.name || item.campaign_name || item.ad_name || `活动 ${item.campaign_id || ''}`,
-              image: itemInfo?.image || '',
-              campaign_name: item.campaign_name || '',
-              ad_group: item.ad_group_name || '',
-              date: item.date || '',
+              id: String(campaign.campaign_id || idx),
+              sku: String(campaign.campaign_id || ''),
+              name: adName,
+              image: '',
+              campaign_name: adName,
+              ad_group: campaign.ad_type || '',
+              date: '',
               status,
-              impressions: imp,
-              clicks: clk,
-              ctr: imp > 0 ? parseFloat(((clk / imp) * 100).toFixed(2)) : 0,
-              spend: parseFloat(spend.toFixed(2)),
-              orders,
-              sales: parseFloat(sales.toFixed(2)),
-              acos: sales > 0 ? parseFloat(((spend / sales) * 100).toFixed(2)) : 0,
-              roas: spend > 0 ? parseFloat((sales / spend).toFixed(2)) : 0,
-              cvr: clk > 0 ? parseFloat(((orders / clk) * 100).toFixed(2)) : 0,
-              cpc: clk > 0 ? parseFloat((spend / clk).toFixed(2)) : 0,
+              impressions: totalImp,
+              clicks: totalClk,
+              ctr: totalImp > 0 ? parseFloat(((totalClk / totalImp) * 100).toFixed(2)) : 0,
+              spend: parseFloat(totalSpend.toFixed(2)),
+              orders: totalOrders,
+              sales: parseFloat(totalSales.toFixed(2)),
+              acos: totalSales > 0 ? parseFloat(((totalSpend / totalSales) * 100).toFixed(2)) : 0,
+              roas: totalSpend > 0 ? parseFloat((totalSales / totalSpend).toFixed(2)) : 0,
+              cvr: totalClk > 0 ? parseFloat(((totalOrders / totalClk) * 100).toFixed(2)) : 0,
+              cpc: totalClk > 0 ? parseFloat((totalSpend / totalClk).toFixed(2)) : 0,
             });
           });
+
+          console.log(`[ads] Total products with data: ${products.length}`);
         }
       }
     }
