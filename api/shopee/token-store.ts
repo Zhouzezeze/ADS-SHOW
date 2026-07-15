@@ -1,9 +1,12 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { Redis } from '@upstash/redis';
 
+const redisUrl = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || process.env.KV_URL || '';
+const redisToken = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '';
+
 const redis = new Redis({
-  url: process.env.KV_REST_API_URL || '',
-  token: process.env.KV_REST_API_TOKEN || '',
+  url: redisUrl,
+  token: redisToken,
 });
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
